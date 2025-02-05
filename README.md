@@ -2,16 +2,11 @@
 
 OpenCarKey is an open source project to make your own DIY remote car key or keyless entry.
 
-#### Demo video of current sate
-<video width="360" controls muted autoplay>
-  <source src="http://files.smartify-os.com/s/bjoZBim7EbDMsm8/download/smart_miata_20.mp4 type=" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
-
 ## Features:
 ### Current
 - App to lock unlock or open the trunk from your phone quick settings
 - Proximity key to auto lock and unlock your car if you are near
+[Demo video of current sate](https://www.instagram.com/reel/C-vFoHECqch/?utm_source=ig_web_copy_link&igsh=MzRlODBiNWFlZA==)
 
 ### Planned
 - Also support ESP32 and not only Arduino Nano
