@@ -21,6 +21,7 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 bool autoLocking = false;
 bool doorsLocked = true;
+bool isAuthenticated = false; // Track authentication state
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
@@ -30,11 +31,13 @@ class MyServerCallbacks : public BLEServerCallbacks
   void onConnect(BLEServer *pServer)
   {
     deviceConnected = true;
+    isAuthenticated = false; // Reset authentication on new connection
   };
 
   void onDisconnect(BLEServer *pServer)
   {
     deviceConnected = false;
+    isAuthenticated = false; // Reset authentication on disconnect
     if (autoLocking)
     {
       lockDoors();
@@ -53,6 +56,33 @@ class MyCallbacks : public BLECharacteristicCallbacks
       String command = String(value.c_str());
       command.trim();
 
+      // Handle authentication
+      if (command.startsWith("AUTH:"))
+      {
+        String receivedPin = command.substring(5);
+        if (receivedPin == LOCK_PIN)
+        {
+          isAuthenticated = true;
+          pCharacteristic->setValue("AUTH_OK");
+          pCharacteristic->notify();
+        }
+        else
+        {
+          pCharacteristic->setValue("AUTH_FAIL");
+          pCharacteristic->notify();
+        }
+        return;
+      }
+
+      // Only process commands if authenticated
+      if (!isAuthenticated)
+      {
+        pCharacteristic->setValue("NOT_AUTH");
+        pCharacteristic->notify();
+        return;
+      }
+
+      // Process authenticated commands
       if (command == "ds")
       {
         pCharacteristic->setValue(doorsLocked ? "ld" : "ud");
@@ -131,7 +161,7 @@ void setup()
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x0); // set value to 0x00 to not advertise this parameter
+  pAdvertising->setMinPreferred(0x0);
   BLEDevice::startAdvertising();
 
   Serial.println("BLE Lock Controller Ready");
