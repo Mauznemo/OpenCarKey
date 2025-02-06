@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/ble_service.dart';
+import '../services/vehicle.dart';
 
 class AddVehicleBottomSheet extends StatefulWidget {
   const AddVehicleBottomSheet({super.key});
@@ -74,12 +75,23 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   return;
                 }
 
-                await BleService.associateBle();
-                _vehicleNameController.clear();
-                _pinController.clear();
-                Navigator.pop(context);
-                //_vehicles = ObjectBox.instance.getVehicles();
-                setState(() {});
+                var result = await BleService.associateBle();
+                if (!result.success) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(result.errorMessage),
+                  ));
+                } else {
+                  VehicleStorage.addVehicle(Vehicle(
+                      name: _vehicleNameController.text,
+                      macAddress: result.macAddress,
+                      associationId: result.associationId,
+                      pin: _pinController.text));
+                  _vehicleNameController.clear();
+                  _pinController.clear();
+                  Navigator.pop(context);
+                  //_vehicles = ObjectBox.instance.getVehicles();
+                  setState(() {});
+                }
               },
               icon: Icon(Icons.add),
               label: Text("Connect now")),

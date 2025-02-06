@@ -52,36 +52,26 @@ class MainActivity: FlutterActivity(){
                 "associateBle" -> {
                     associateBle(result)
                 }
-                else -> result.notImplemented()
-            }
-        }
-
-        // SharedPreferences MethodChannel
-        /*MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.smartify_os.open_car_key_app/shared_preferences").setMethodCallHandler { call, result ->
-            when (call.method) {
-                "getPreference" -> {
-                    val key = call.argument<String>("key")
-                    if (key != null) {
-                        val sharedPreferences = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                        val value = sharedPreferences.getString(key, null)
-                        result.success(value)
-                    } else {
-                        result.error("INVALID_KEY", "Key is null", null)
+                "disassociateBle" -> {
+                    val associationId = call.argument<Int>("associationId")
+                    val macAddress = call.argument<String>("macAddress")
+                    if (associationId != null && macAddress != null) {
+                        disassociateBle(associationId, macAddress)
+                        result.success(true)
                     }
+                    else result.error("INVALID_VARIABLES", "One or both variables are null", null)
+
+                }
+                "getAssociated" -> {
+                    result.success(getAssociated())
                 }
                 else -> result.notImplemented()
             }
-        }*/
+        }
     }
 
 
-    // Your existing Kotlin method
     private fun associateBle(result: MethodChannel.Result) {
-        /*NotificationHelper.createNotificationChannel(this@MainActivity, "system", "System Notifications",
-            "System Notifications", NotificationManager.IMPORTANCE_LOW)
-        NotificationHelper.sendNotification(this@MainActivity, "system", "Started association", "Started scanning for BLE devices...",
-            1, R.drawable.ic_launcher_foreground)*/
-
         val deviceFilter: BluetoothDeviceFilter = BluetoothDeviceFilter.Builder()
             .build()
 
@@ -89,7 +79,7 @@ class MainActivity: FlutterActivity(){
             // Find only devices that match this request filter.
             .addDeviceFilter(deviceFilter)
             // Stop scanning as soon as one device matching the filter is found.
-            .setSingleDevice(true)
+            .setSingleDevice(false)
             .build()
 
         deviceManager.associate(pairingRequest,
@@ -98,29 +88,18 @@ class MainActivity: FlutterActivity(){
                 // Called when a device is found. Launch the IntentSender so the user
                 // can select the device they want to pair with.
                 override fun onAssociationPending(intentSender: IntentSender) {
-                    NotificationHelper.sendNotification(this@MainActivity, "system", "Association Pending", "Association Pending...",
-                        1, R.drawable.ic_launcher_foreground)
-
                     startIntentSenderForResult(intentSender, 420, null, 0, 0, 0)
                 }
 
                 override fun onAssociationCreated(associationInfo: AssociationInfo) {
-                    // An association is created.
                     val associationId: Int = associationInfo.id
                     val macAddress: MacAddress? = associationInfo.deviceMacAddress
-                    saveAssociationInfo(macAddress)
-                    NotificationHelper.sendNotification(this@MainActivity, "system", "Successfully associated ($associationId)", "Successfully associated with $macAddress",
-                        1, R.drawable.ic_launcher_foreground)
 
-                    result.success("Successfully associated with device: $macAddress")
+                    result.success("$macAddress, $associationId")
                 }
 
                 override fun onFailure(errorMessage: CharSequence?) {
-                    // To handle the failure.
-                    NotificationHelper.sendNotification(this@MainActivity, "system", "Association failed", "Failed ($errorMessage)",
-                        1, R.drawable.ic_launcher_foreground)
-
-                    result.error("BLE_ASSOCIATION_FAILED", "Failed to associate: $errorMessage", null)
+                    result.error("BLE_ASSOCIATION_FAILED", "$errorMessage", null)
                 }
 
             })
@@ -141,9 +120,8 @@ class MainActivity: FlutterActivity(){
                         ) {
                             return
                         }
-                        //connectToDevice(device)
+
                         deviceManager.startObservingDevicePresence(device.address);
-                        // Maintain continuous interaction with a paired device.
                     }
                 }
             }
@@ -151,15 +129,12 @@ class MainActivity: FlutterActivity(){
         }
     }
 
-    private fun isDeviceAssociated(): Boolean {
-        return sharedPreferences.getBoolean("device_associated", false)
+    private fun disassociateBle(id: Int, macAddress: String) {
+        deviceManager.stopObservingDevicePresence(macAddress)
+        deviceManager.disassociate(id)
     }
 
-    private fun saveAssociationInfo(macAddress: MacAddress?) {
-        sharedPreferences = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-        editor.putBoolean("device_associated", true)
-        editor.putString("device_mac_address", macAddress.toString())
-        editor.apply()
+    private fun getAssociated(): String {
+        return deviceManager.myAssociations.toString()
     }
 }
