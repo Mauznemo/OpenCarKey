@@ -37,6 +37,8 @@ class _HomePageState extends State<HomePage> {
         .map((vehicle) => VehicleEntry(
             vehicleData: vehicle, isConnected: false, doorsLocked: false))
         .toList();
+
+    _getConnectedDevices();
     setState(() {});
   }
 
