@@ -40,32 +40,49 @@ class MainActivity: FlutterActivity(){
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
         super.onCreate(savedInstanceState, persistentState)
 
-        sharedPreferences = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        sharedPreferences = getSharedPreferences("shared_preferences", Context.MODE_PRIVATE)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+
+        // BLE MethodChannel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.smartify_os.open_car_key_app/ble").setMethodCallHandler { call, result ->
             when (call.method) {
                 "associateBle" -> {
-                    associateBle()
-                    result.success("BLE associated successfully")
+                    associateBle(result)
                 }
                 else -> result.notImplemented()
             }
         }
+
+        // SharedPreferences MethodChannel
+        /*MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.smartify_os.open_car_key_app/shared_preferences").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getPreference" -> {
+                    val key = call.argument<String>("key")
+                    if (key != null) {
+                        val sharedPreferences = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                        val value = sharedPreferences.getString(key, null)
+                        result.success(value)
+                    } else {
+                        result.error("INVALID_KEY", "Key is null", null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }*/
     }
 
+
     // Your existing Kotlin method
-    private fun associateBle() {
-        NotificationHelper.createNotificationChannel(this@MainActivity, "system", "System Notifications",
+    private fun associateBle(result: MethodChannel.Result) {
+        /*NotificationHelper.createNotificationChannel(this@MainActivity, "system", "System Notifications",
             "System Notifications", NotificationManager.IMPORTANCE_LOW)
         NotificationHelper.sendNotification(this@MainActivity, "system", "Started association", "Started scanning for BLE devices...",
-            1, R.drawable.ic_launcher_foreground)
+            1, R.drawable.ic_launcher_foreground)*/
 
         val deviceFilter: BluetoothDeviceFilter = BluetoothDeviceFilter.Builder()
-            // Match only Bluetooth devices whose name matches the pattern.
-            .setNamePattern(Pattern.compile("DSD TECH"))
             .build()
 
         val pairingRequest: AssociationRequest = AssociationRequest.Builder()
@@ -94,12 +111,16 @@ class MainActivity: FlutterActivity(){
                     saveAssociationInfo(macAddress)
                     NotificationHelper.sendNotification(this@MainActivity, "system", "Successfully associated ($associationId)", "Successfully associated with $macAddress",
                         1, R.drawable.ic_launcher_foreground)
+
+                    result.success("Successfully associated with device: $macAddress")
                 }
 
                 override fun onFailure(errorMessage: CharSequence?) {
                     // To handle the failure.
                     NotificationHelper.sendNotification(this@MainActivity, "system", "Association failed", "Failed ($errorMessage)",
                         1, R.drawable.ic_launcher_foreground)
+
+                    result.error("BLE_ASSOCIATION_FAILED", "Failed to associate: $errorMessage", null)
                 }
 
             })
@@ -135,6 +156,7 @@ class MainActivity: FlutterActivity(){
     }
 
     private fun saveAssociationInfo(macAddress: MacAddress?) {
+        sharedPreferences = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val editor = sharedPreferences.edit()
         editor.putBoolean("device_associated", true)
         editor.putString("device_mac_address", macAddress.toString())
