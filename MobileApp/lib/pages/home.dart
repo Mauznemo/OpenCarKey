@@ -114,65 +114,83 @@ class _HomePageState extends State<HomePage> {
             itemCount: _vehicleEntries.length,
             itemBuilder: (context, index) {
               VehicleEntry vehicleEntry = _vehicleEntries[index];
-              return ListTile(
-                leading: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.circle,
-                      color:
-                          vehicleEntry.isConnected ? Colors.green : Colors.red,
-                    ),
-                    IconButton(
-                      icon: Icon(vehicleEntry.doorsLocked
-                          ? Icons.lock_outline
-                          : Icons.lock_open_outlined),
-                      onPressed: vehicleEntry.isConnected
-                          ? () {
-                              setState(() {
-                                BleService.postEvent(vehicleEntry.doorsLocked
-                                    ? "SEND_MESSAGE:ud\n"
-                                    : "SEND_MESSAGE:ld\n");
-                              });
-                            }
-                          : null,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.directions_car),
-                      onPressed: vehicleEntry.isConnected
-                          ? () {
-                              BleService.postEvent("SEND_MESSAGE:ut\n");
-                            }
-                          : null,
-                    ),
-                  ],
-                ),
-                title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(vehicleEntry.vehicleData.name,
-                        style: const TextStyle(fontSize: 20)),
-                    Text(
-                        "Mac Address: ${vehicleEntry.vehicleData.macAddress}, Association ID: ${vehicleEntry.vehicleData.associationId}",
-                        style: const TextStyle(fontSize: 10)),
-                  ],
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: () async {
-                    // Delete vehicle from Hive box
-                    VehicleStorage.removeVehicle(
-                        vehicleEntry.vehicleData.macAddress);
+              return Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: ListTile(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.0)),
+                  tileColor: Theme.of(context).colorScheme.secondaryContainer,
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            vehicleEntry.isConnected
+                                ? Icons.bluetooth_audio
+                                : Icons.bluetooth_disabled_rounded,
+                            color: vehicleEntry.isConnected
+                                ? Colors.green
+                                : Colors.red,
+                          ),
+                          SizedBox(width: 10),
+                          Text(vehicleEntry.vehicleData.name,
+                              style: const TextStyle(fontSize: 20)),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),
+                        child: Text(
+                            "Mac Address: ${vehicleEntry.vehicleData.macAddress}, Association ID: ${vehicleEntry.vehicleData.associationId}",
+                            style: const TextStyle(fontSize: 10)),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(vehicleEntry.doorsLocked
+                                ? Icons.lock_outline
+                                : Icons.lock_open_outlined),
+                            onPressed: vehicleEntry.isConnected
+                                ? () {
+                                    setState(() {
+                                      BleService.postEvent(
+                                          vehicleEntry.doorsLocked
+                                              ? "SEND_MESSAGE:ud\n"
+                                              : "SEND_MESSAGE:ld\n");
+                                    });
+                                  }
+                                : null,
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.directions_car),
+                            onPressed: vehicleEntry.isConnected
+                                ? () {
+                                    BleService.postEvent("SEND_MESSAGE:ut\n");
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () async {
+                      // Delete vehicle from Hive box
+                      VehicleStorage.removeVehicle(
+                          vehicleEntry.vehicleData.macAddress);
 
-                    print(
-                        "Removing Association ID: ${vehicleEntry.vehicleData.associationId}");
-                    await BleService.disassociateBle(
-                        vehicleEntry.vehicleData.associationId,
-                        vehicleEntry.vehicleData.macAddress);
+                      print(
+                          "Removing Association ID: ${vehicleEntry.vehicleData.associationId}");
+                      await BleService.disassociateBle(
+                          vehicleEntry.vehicleData.associationId,
+                          vehicleEntry.vehicleData.macAddress);
 
-                    _getVehicles();
-                    setState(() {});
-                  },
+                      _getVehicles();
+                      setState(() {});
+                    },
+                  ),
                 ),
               );
             }),
