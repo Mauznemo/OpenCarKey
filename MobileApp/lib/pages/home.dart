@@ -127,19 +127,23 @@ class _HomePageState extends State<HomePage> {
                       icon: Icon(vehicleEntry.doorsLocked
                           ? Icons.lock_outline
                           : Icons.lock_open_outlined),
-                      onPressed: () {
-                        setState(() {
-                          BleService.postEvent(vehicleEntry.doorsLocked
-                              ? "SEND_MESSAGE:ud\n"
-                              : "SEND_MESSAGE:ld\n");
-                        });
-                      },
+                      onPressed: vehicleEntry.isConnected
+                          ? () {
+                              setState(() {
+                                BleService.postEvent(vehicleEntry.doorsLocked
+                                    ? "SEND_MESSAGE:ud\n"
+                                    : "SEND_MESSAGE:ld\n");
+                              });
+                            }
+                          : null,
                     ),
                     IconButton(
                       icon: const Icon(Icons.directions_car),
-                      onPressed: () {
-                        BleService.postEvent("SEND_MESSAGE:ut\n");
-                      },
+                      onPressed: vehicleEntry.isConnected
+                          ? () {
+                              BleService.postEvent("SEND_MESSAGE:ut\n");
+                            }
+                          : null,
                     ),
                   ],
                 ),
