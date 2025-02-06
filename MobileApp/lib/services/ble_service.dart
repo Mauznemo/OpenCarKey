@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 
 class BleService {
@@ -43,6 +45,31 @@ class BleService {
       await _channel.invokeMethod('postEvent', {'message': message});
     } on PlatformException catch (e) {
       print("Error: ${e.message}");
+    }
+  }
+
+  static Future<List<String>> getConnectedDevices() async {
+    try {
+      var result = await _channel.invokeMethod('getConnectedDevices');
+      print("Success: $result");
+
+      // Ensure the result is a valid string
+      if (result == null || result.toString().isEmpty) {
+        return [];
+      }
+
+      // Option 1: If the Kotlin side sends a JSON string (recommended)
+      try {
+        return List<String>.from(jsonDecode(result));
+      } catch (e) {
+        print("JSON parsing error, falling back to split: $e");
+      }
+
+      // Option 2: If the Kotlin side sends a comma-separated string (e.g., "Device1,Device2")
+      return result.toString().split(",").map((e) => e.trim()).toList();
+    } on PlatformException catch (e) {
+      print("Error: ${e.message}");
+      return [];
     }
   }
 }

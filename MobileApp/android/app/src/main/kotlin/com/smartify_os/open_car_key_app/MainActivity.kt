@@ -28,6 +28,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
 import java.util.concurrent.Executor
 import java.util.regex.Pattern
 
@@ -103,6 +104,9 @@ class MainActivity: FlutterActivity(){
                     else {
                         result.error("INVALID_VARIABLES", "Message is null", null)
                     }
+                }
+                "getConnectedDevices" -> {
+                    result.success(JSONArray(CompanionService.connectedDevices).toString())
                 }
                 else -> result.notImplemented()
             }

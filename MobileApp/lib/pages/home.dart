@@ -40,10 +40,27 @@ class _HomePageState extends State<HomePage> {
     setState(() {});
   }
 
+  void _getConnectedDevices() async {
+    var connectedDevices = await BleService.getConnectedDevices();
+
+    for (var macAddress in connectedDevices) {
+      _vehicleEntries
+          .firstWhere((element) =>
+              element.vehicleData.macAddress.toLowerCase() ==
+              macAddress.toLowerCase())
+          .isConnected = true;
+    }
+
+    BleService.postEvent("SEND_MESSAGE:ds\n");
+
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     _getVehicles();
+    _getConnectedDevices();
 
     BleEventListener.listenForBleEvents((event) {});
 

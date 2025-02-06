@@ -25,6 +25,7 @@ class CompanionService: CompanionDeviceService() {
     private lateinit var gatt: BluetoothGatt
     companion object {
         var connected: Boolean = false
+        var connectedDevices: MutableList<String> = mutableListOf()
     }
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -70,11 +71,13 @@ class CompanionService: CompanionDeviceService() {
 
                     connected = true
                     EventBus.post("DEVICE_CONNECTED:${device.address}")
+                    connectedDevices.add(device.address)
 
                     gatt.discoverServices()
                 } else if (newState == BluetoothAdapter.STATE_DISCONNECTED) {
                     connected = false
                     EventBus.post("DEVICE_DISCONNECTED:${device.address}")
+                    connectedDevices.remove(device.address)
                 }
             }
 
