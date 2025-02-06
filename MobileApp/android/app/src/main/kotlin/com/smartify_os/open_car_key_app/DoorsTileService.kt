@@ -37,20 +37,21 @@ class DoorsTileService : TileService() {
         }
         else if (event.startsWith("MESSAGE_RECEIVED:")) {
             val message = event.substringAfter(":")
-            if(message == "ud"){
+            val parts = message.split(";")
+            if(parts[0] == "ud"){
                 Log.d("MyTileService", "Received Doors unlocked")
                 qsTile.label = "Unlocked"
                 qsTile.state = Tile.STATE_INACTIVE
                 qsTile.icon = Icon.createWithResource(this, R.drawable.ic_unlocked)
-                qsTile.subtitle = "Doors are unlocked"
+                qsTile.subtitle = "Doors are unlocked (${parts[1]})"
                 qsTile.updateTile()
                 doorState = DoorState.Unlocked
-            } else if(message == "ld"){
+            } else if(parts[0] == "ld"){
                 Log.d("MyTileService", "Received Doors locked")
                 qsTile.label = "Locked"
                 qsTile.state = Tile.STATE_ACTIVE
                 qsTile.icon = Icon.createWithResource(this, R.drawable.ic_locked)
-                qsTile.subtitle = "Doors are locked"
+                qsTile.subtitle = "Doors are locked (${parts[1]})"
                 qsTile.updateTile()
                 doorState = DoorState.Locked
             }

@@ -14,22 +14,28 @@ import android.content.Intent
 import android.content.IntentSender
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.graphics.drawable.Icon
 import android.net.MacAddress
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PersistableBundle
+import android.service.quicksettings.Tile
+import android.util.Log
 import androidx.core.app.ActivityCompat
+import com.smartify_os.open_car_key_app.DoorsTileService.DoorState
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executor
 import java.util.regex.Pattern
 
 class MainActivity: FlutterActivity(){
-    private val CHANNEL = "com.smartify_os.open_car_key_app/ble"
+    private var bleEventSink: EventChannel.EventSink? = null
 
     private lateinit var bluetoothAdapter: BluetoothAdapter
     private lateinit var sharedPreferences: SharedPreferences
-    //private lateinit var deviceManager: CompanionDeviceManager
 
     private val deviceManager: CompanionDeviceManager by lazy {
         getSystemService(Context.COMPANION_DEVICE_SERVICE) as CompanionDeviceManager
@@ -37,14 +43,37 @@ class MainActivity: FlutterActivity(){
 
     private val executor: Executor =  Executor { it.run() }
 
+    private val eventListener: (String) -> Unit = { event ->
+        runOnUiThread {bleEventSink?.success(event)}
+    }
+
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
-        super.onCreate(savedInstanceState, persistentState)
 
         sharedPreferences = getSharedPreferences("shared_preferences", Context.MODE_PRIVATE)
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        EventBus.unsubscribe(eventListener)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        EventBus.subscribe(eventListener)
+
+        // Set up EventChannel for BLE Events
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.smartify_os.open_car_key_app/ble_events").setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    bleEventSink = events // Store eventSink for sending events later
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    bleEventSink = null // Stop sending events when Flutter cancels listening
+                }
+            }
+        )
 
         // BLE MethodChannel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.smartify_os.open_car_key_app/ble").setMethodCallHandler { call, result ->
@@ -64,6 +93,16 @@ class MainActivity: FlutterActivity(){
                 }
                 "getAssociated" -> {
                     result.success(getAssociated())
+                }
+                "postEvent" -> {
+                    val message = call.argument<String>("message")
+                    if (message != null) {
+                        EventBus.post(message)
+                        result.success(true)
+                    }
+                    else {
+                        result.error("INVALID_VARIABLES", "Message is null", null)
+                    }
                 }
                 else -> result.notImplemented()
             }

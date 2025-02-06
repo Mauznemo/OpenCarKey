@@ -37,6 +37,14 @@ class BleService {
       return "";
     }
   }
+
+  static Future<void> postEvent(String message) async {
+    try {
+      await _channel.invokeMethod('postEvent', {'message': message});
+    } on PlatformException catch (e) {
+      print("Error: ${e.message}");
+    }
+  }
 }
 
 class BleAssociationResult {

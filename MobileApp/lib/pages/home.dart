@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:native_shared_preferences/native_shared_preferences.dart';
+import 'package:open_car_key_app/services/ble_event_listener.dart';
 import 'package:open_car_key_app/services/ble_service.dart';
 import 'package:open_car_key_app/services/vehicle.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -17,9 +18,10 @@ class _HomePageState extends State<HomePage> {
   Future<NativeSharedPreferences> _prefs =
       NativeSharedPreferences.getInstance();
 
-  List<Vehicle> _vehicles = [];
+  List<VehicleEntry> _vehicleEntries = [];
 
-  late String _deviceName = "Not associated";
+  late String _event = "--";
+
   Future<void> _requestPermission() async {
     Map<Permission, PermissionStatus> statuses = await [
       Permission.location,
@@ -30,24 +32,58 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _getVehicles() async {
-    _vehicles = await VehicleStorage.getVehicles();
+    var vehicles = await VehicleStorage.getVehicles();
+    _vehicleEntries = vehicles
+        .map((vehicle) => VehicleEntry(
+            vehicleData: vehicle, isConnected: false, doorsLocked: false))
+        .toList();
     setState(() {});
-  }
-
-  void init() async {
-    final NativeSharedPreferences prefs = await _prefs;
-    await prefs.reload();
-    _deviceName = prefs.getString('device_mac_address') ?? 'Not associated';
-    setState(() {});
-    var associated = await BleService.getAssociated();
-    print("!!!!!!!!!!!!!!!!!!!!!!!!!!Associated: $associated");
   }
 
   @override
   void initState() {
     super.initState();
-    init();
     _getVehicles();
+
+    BleEventListener.listenForBleEvents((event) {});
+
+    BleEventListener.onDeviceConnected = (macAddress) {
+      _event = "Connected to $macAddress";
+      _vehicleEntries
+          .firstWhere((element) =>
+              element.vehicleData.macAddress.toLowerCase() ==
+              macAddress.toLowerCase())
+          .isConnected = true;
+      setState(() {});
+    };
+
+    BleEventListener.onDeviceDisconnected = (macAddress) {
+      _event = "Disconnected from $macAddress";
+      _vehicleEntries
+          .firstWhere((element) =>
+              element.vehicleData.macAddress.toLowerCase() ==
+              macAddress.toLowerCase())
+          .isConnected = false;
+      setState(() {});
+    };
+
+    BleEventListener.onMessageReceived = (macAddress, message) {
+      if (message.startsWith("ld")) {
+        _vehicleEntries
+            .firstWhere((element) =>
+                element.vehicleData.macAddress.toLowerCase() ==
+                macAddress.toLowerCase())
+            .doorsLocked = true;
+        setState(() {});
+      } else if (message.startsWith("ud")) {
+        _vehicleEntries
+            .firstWhere((element) =>
+                element.vehicleData.macAddress.toLowerCase() ==
+                macAddress.toLowerCase())
+            .doorsLocked = false;
+        setState(() {});
+      }
+    };
   }
 
   @override
@@ -58,16 +94,45 @@ class _HomePageState extends State<HomePage> {
       children: [
         ListView.builder(
             shrinkWrap: true,
-            itemCount: _vehicles.length,
+            itemCount: _vehicleEntries.length,
             itemBuilder: (context, index) {
-              Vehicle vehicle = _vehicles[index];
+              VehicleEntry vehicleEntry = _vehicleEntries[index];
               return ListTile(
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      color:
+                          vehicleEntry.isConnected ? Colors.green : Colors.red,
+                    ),
+                    IconButton(
+                      icon: Icon(vehicleEntry.doorsLocked
+                          ? Icons.lock_outline
+                          : Icons.lock_open_outlined),
+                      onPressed: () {
+                        setState(() {
+                          BleService.postEvent(vehicleEntry.doorsLocked
+                              ? "SEND_MESSAGE:ud\n"
+                              : "SEND_MESSAGE:ld\n");
+                        });
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.directions_car),
+                      onPressed: () {
+                        BleService.postEvent("SEND_MESSAGE:ut\n");
+                      },
+                    ),
+                  ],
+                ),
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(vehicle.name, style: const TextStyle(fontSize: 20)),
+                    Text(vehicleEntry.vehicleData.name,
+                        style: const TextStyle(fontSize: 20)),
                     Text(
-                        "Mac Address: ${vehicle.macAddress}, Association ID: ${vehicle.associationId}",
+                        "Mac Address: ${vehicleEntry.vehicleData.macAddress}, Association ID: ${vehicleEntry.vehicleData.associationId}",
                         style: const TextStyle(fontSize: 10)),
                   ],
                 ),
@@ -75,11 +140,14 @@ class _HomePageState extends State<HomePage> {
                   icon: const Icon(Icons.delete),
                   onPressed: () async {
                     // Delete vehicle from Hive box
-                    VehicleStorage.removeVehicle(vehicle.macAddress);
+                    VehicleStorage.removeVehicle(
+                        vehicleEntry.vehicleData.macAddress);
 
-                    print("Removing Association ID: ${vehicle.associationId}");
+                    print(
+                        "Removing Association ID: ${vehicleEntry.vehicleData.associationId}");
                     await BleService.disassociateBle(
-                        vehicle.associationId, vehicle.macAddress);
+                        vehicleEntry.vehicleData.associationId,
+                        vehicleEntry.vehicleData.macAddress);
 
                     _getVehicles();
                     setState(() {});
@@ -87,21 +155,33 @@ class _HomePageState extends State<HomePage> {
                 ),
               );
             }),
-        Text("Device Mac Address: $_deviceName"),
+        Text(_event),
         FilledButton(
             onPressed: () async {
               await _requestPermission();
               await AddVehicleBottomSheet.showBottomSheet(context);
               //BleService.associateBle();
-              final NativeSharedPreferences prefs = await _prefs;
+              /*final NativeSharedPreferences prefs = await _prefs;
               await prefs.reload();
-              _deviceName =
+              _event =
                   prefs.getString('device_mac_address') ?? 'Not associated';
-              setState(() {});
+              setState(() {});*/
               _getVehicles();
             },
             child: const Text("Add a Vehicle")),
       ],
     ));
   }
+}
+
+class VehicleEntry {
+  Vehicle vehicleData;
+  bool isConnected;
+  bool doorsLocked;
+
+  VehicleEntry({
+    required this.vehicleData,
+    required this.isConnected,
+    required this.doorsLocked,
+  });
 }

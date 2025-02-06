@@ -30,10 +30,6 @@ class CompanionService: CompanionDeviceService() {
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onDeviceAppeared(associationInfo: AssociationInfo) {
         Log.d("CompanionService", "onDeviceAppeared called")
-        NotificationHelper.sendNotification(
-            this@CompanionService, "system", "Device Appeared", "BLE device appeared.",
-            2, R.drawable.ic_launcher_foreground
-        )
 
         if(connected){
             return
@@ -45,24 +41,20 @@ class CompanionService: CompanionDeviceService() {
 
     override fun onDeviceDisappeared(associationInfo: AssociationInfo) {
         Log.d("CompanionService", "onDeviceDisappeared called")
-        NotificationHelper.sendNotification(
-            this@CompanionService, "system", "Device Disappeared", "BLE device disappeared.",
-            2, R.drawable.ic_launcher_foreground
-        )
     }
 
     private fun connectToDevice(device: BluetoothDevice?) {
         val sharedPreferences = getSharedPreferences("app_prefs", MODE_PRIVATE)
+
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.BLUETOOTH_CONNECT
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            Log.i("MyTag", "No BT connect perms")
+            EventBus.post("CONNECT_FAILED:No permission")
             return
         }
+
         var bluetoothGatt = device?.connectGatt(this, false, object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 if (newState == BluetoothAdapter.STATE_CONNECTED) {
@@ -72,32 +64,17 @@ class CompanionService: CompanionDeviceService() {
                             Manifest.permission.BLUETOOTH_CONNECT
                         ) != PackageManager.PERMISSION_GRANTED
                     ) {
-                        Toast.makeText(
-                            this@CompanionService,
-                            "No Bluetooth connect permission",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        EventBus.post("CONNECT_FAILED:No permission")
                         return
                     }
-
-                    NotificationHelper.sendNotification(
-                        this@CompanionService, "system", "Connected", "Connected to HM-10",
-                        3, R.drawable.ic_launcher_foreground
-                    )
 
                     connected = true
                     EventBus.post("DEVICE_CONNECTED:${device.address}")
 
-
                     gatt.discoverServices()
                 } else if (newState == BluetoothAdapter.STATE_DISCONNECTED) {
-                    NotificationHelper.sendNotification(
-                        this@CompanionService, "system", "Disconnected", "Disconnected from HM-10",
-                        3, R.drawable.ic_launcher_foreground
-                    )
                     connected = false
                     EventBus.post("DEVICE_DISCONNECTED:${device.address}")
-                    // Reconnect if necessary
                 }
             }
 
@@ -105,10 +82,7 @@ class CompanionService: CompanionDeviceService() {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     this@CompanionService.gatt = gatt
                     // Handle the services discovered
-                    NotificationHelper.sendNotification(
-                        this@CompanionService, "system", "Ready", "HM-10 Ready to use",
-                        3, R.drawable.ic_launcher_foreground
-                    )
+                    EventBus.post("DEVICE_READY:${device.address}")
 
                     val serviceUUID = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
                     val characteristicUUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
@@ -123,6 +97,7 @@ class CompanionService: CompanionDeviceService() {
                             Manifest.permission.BLUETOOTH_CONNECT
                         ) != PackageManager.PERMISSION_GRANTED
                     ) {
+                        EventBus.post("CONNECT_FAILED:No permission")
                         return
                     }
 
@@ -156,7 +131,7 @@ class CompanionService: CompanionDeviceService() {
                 message = message.trim()
                 // Process the received message
                 Log.d("BLE", "Received message: $message")
-                EventBus.post("MESSAGE_RECEIVED:$message")
+                EventBus.post("MESSAGE_RECEIVED:$message;${device.address}")
             }
         })
     }
@@ -176,20 +151,9 @@ class CompanionService: CompanionDeviceService() {
             val success = gatt.writeCharacteristic(writeCharacteristic)
 
             if (success) {
-                NotificationHelper.sendNotification(
-                    this@CompanionService,
-                    "system",
-                    "Data sent successfully",
-                    "HM-10 Data sent successfully",
-                    4,
-                    R.drawable.ic_launcher_foreground
-                )
+                EventBus.post("SUCCESSFULLY_SENT:$message")
             } else {
-                NotificationHelper.sendNotification(
-                    this@CompanionService, "system", "Failed to send data",
-                    "HM-10 Failed to send data ($success)",
-                    4, R.drawable.ic_launcher_foreground
-                )
+                EventBus.post("FAILED_TO_SEND:$message")
             }
         }
     }
@@ -202,7 +166,6 @@ class CompanionService: CompanionDeviceService() {
                 sendString(message)
             }
         }
-
     }
 
     override fun onCreate() {
@@ -214,32 +177,5 @@ class CompanionService: CompanionDeviceService() {
         super.onDestroy()
         EventBus.unsubscribe(eventListener)
     }
-
-    /*
-    private fun sendDataToCharacteristic(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, data: String) {
-        // Convert your data to bytes
-        val dataBytes = data.toByteArray()
-
-        // Set the value for the characteristic
-        //characteristic.value = dataBytes
-
-        // Write the characteristic
-        if (ActivityCompat.checkSelfPermission(
-                this@CompanionService,
-                Manifest.permission.BLUETOOTH_CONNECT
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-        val success = gatt.writeCharacteristic(characteristic, dataBytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-        if (success == BluetoothStatusCodes.SUCCESS) {
-            NotificationHelper.sendNotification(this@CompanionService, "system", "Data sent successfully", "HM-10 Data sent successfully",
-                4, R.drawable.ic_launcher_foreground)
-        } else {
-            NotificationHelper.sendNotification(this@CompanionService, "system", "Failed to send data",
-                "HM-10 Failed to send data ($success)",
-                4, R.drawable.ic_launcher_foreground)
-        }
-    }*/
 }
 
