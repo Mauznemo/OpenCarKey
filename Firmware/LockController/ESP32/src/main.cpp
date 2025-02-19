@@ -6,13 +6,13 @@
 #include <BLE2902.h>
 
 // BLE service and characteristic UUIDs
-#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 // Pin definitions
-const int doorsRelayPin1 = 5;
-const int doorsRelayPin2 = 6;
-const int trunkRelayPin1 = 7;
+const int doorsRelayPin1 = 15;
+const int doorsRelayPin2 = 16;
+const int trunkRelayPin1 = 17;
 
 const int motorTimeMs = 50;
 const int blockTimeMs = 1500;
@@ -25,6 +25,59 @@ bool isAuthenticated = false; // Track authentication state
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
+
+void unlockTrunk()
+{
+  digitalWrite(trunkRelayPin1, HIGH);
+  delay(motorTimeMs);
+  digitalWrite(trunkRelayPin1, LOW);
+  Serial.println("ut");
+  delay(blockTimeMs);
+}
+
+void unlockDoors()
+{
+  digitalWrite(doorsRelayPin1, HIGH);
+  digitalWrite(doorsRelayPin2, LOW);
+  delay(motorTimeMs);
+  digitalWrite(doorsRelayPin1, LOW);
+  digitalWrite(doorsRelayPin2, LOW);
+  Serial.println("ud");
+  doorsLocked = false;
+  delay(blockTimeMs);
+}
+
+void lockDoors()
+{
+  digitalWrite(doorsRelayPin1, LOW);
+  digitalWrite(doorsRelayPin2, HIGH);
+  delay(motorTimeMs);
+  digitalWrite(doorsRelayPin1, LOW);
+  digitalWrite(doorsRelayPin2, LOW);
+  Serial.println("ld");
+  doorsLocked = true;
+  delay(blockTimeMs);
+}
+
+void checkSerial()
+{
+  if (Serial.available() > 0)
+  {
+    String data = Serial.readStringUntil('\n');
+    if (data == "ld")
+    {
+      lockDoors();
+    }
+    else if (data == "ud")
+    {
+      unlockDoors();
+    }
+    else if (data == "ut")
+    {
+      unlockTrunk();
+    }
+  }
+}
 
 class MyServerCallbacks : public BLEServerCallbacks
 {
@@ -77,6 +130,7 @@ class MyCallbacks : public BLECharacteristicCallbacks
       // Only process commands if authenticated
       if (!isAuthenticated)
       {
+        Serial.println("Not authenticated");
         pCharacteristic->setValue("NOT_AUTH");
         pCharacteristic->notify();
         return;
@@ -122,6 +176,7 @@ class MyCallbacks : public BLECharacteristicCallbacks
 
 void setup()
 {
+  Serial.println("Starting BLE Lock Controller");
   // Initialize pins
   pinMode(doorsRelayPin1, OUTPUT);
   pinMode(doorsRelayPin2, OUTPUT);
@@ -182,58 +237,5 @@ void loop()
   if (deviceConnected && !oldDeviceConnected)
   {
     oldDeviceConnected = deviceConnected;
-  }
-}
-
-void unlockTrunk()
-{
-  digitalWrite(trunkRelayPin1, HIGH);
-  delay(motorTimeMs);
-  digitalWrite(trunkRelayPin1, LOW);
-  Serial.println("ut");
-  delay(blockTimeMs);
-}
-
-void unlockDoors()
-{
-  digitalWrite(doorsRelayPin1, HIGH);
-  digitalWrite(doorsRelayPin2, LOW);
-  delay(motorTimeMs);
-  digitalWrite(doorsRelayPin1, LOW);
-  digitalWrite(doorsRelayPin2, LOW);
-  Serial.println("ud");
-  doorsLocked = false;
-  delay(blockTimeMs);
-}
-
-void lockDoors()
-{
-  digitalWrite(doorsRelayPin1, LOW);
-  digitalWrite(doorsRelayPin2, HIGH);
-  delay(motorTimeMs);
-  digitalWrite(doorsRelayPin1, LOW);
-  digitalWrite(doorsRelayPin2, LOW);
-  Serial.println("ld");
-  doorsLocked = true;
-  delay(blockTimeMs);
-}
-
-void checkSerial()
-{
-  if (Serial.available() > 0)
-  {
-    String data = Serial.readStringUntil('\n');
-    if (data == "ld")
-    {
-      lockDoors();
-    }
-    else if (data == "ud")
-    {
-      unlockDoors();
-    }
-    else if (data == "ut")
-    {
-      unlockTrunk();
-    }
   }
 }
