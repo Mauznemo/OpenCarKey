@@ -78,6 +78,17 @@ class VehicleStorage {
     await saveVehicles(vehicles);
   }
 
+  // Update an existing vehicle by mac address
+  static Future<void> updateVehicle(Vehicle updatedVehicle) async {
+    final vehicles = await getVehicles();
+    final index = vehicles.indexWhere(
+        (vehicle) => vehicle.macAddress == updatedVehicle.macAddress);
+    if (index != -1) {
+      vehicles[index] = updatedVehicle;
+      await saveVehicles(vehicles);
+    }
+  }
+
   // Remove a vehicle by mac address
   static Future<void> removeVehicle(String macAddress) async {
     final vehicles = await getVehicles();

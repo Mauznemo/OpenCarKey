@@ -6,6 +6,7 @@ import 'package:open_car_key_app/services/vehicle.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../components/add_vehicle_bottom_sheet.dart';
+import '../components/edit_vehicle_bottom_sheet.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -121,6 +122,12 @@ class _HomePageState extends State<HomePage> {
                 child: Builder(builder: (context) {
                   //Builder needed or else colorScheme.secondaryContainer will be the fallback color
                   return ListTile(
+                    onLongPress: () async {
+                      await EditVehicleBottomSheet.showBottomSheet(
+                          context, vehicleEntry.vehicleData);
+                      _getVehicles();
+                      setState(() {});
+                    },
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10.0)),
                     tileColor: Theme.of(context).colorScheme.secondaryContainer,
