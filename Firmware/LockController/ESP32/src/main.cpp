@@ -15,7 +15,6 @@ const int doorsRelayPin2 = 16;
 const int trunkRelayPin1 = 17;
 
 const int motorTimeMs = 50;
-const int blockTimeMs = 1500;
 
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
@@ -32,7 +31,6 @@ void unlockTrunk()
   delay(motorTimeMs);
   digitalWrite(trunkRelayPin1, LOW);
   Serial.println("ut");
-  delay(blockTimeMs);
 }
 
 void unlockDoors()
@@ -44,7 +42,6 @@ void unlockDoors()
   digitalWrite(doorsRelayPin2, LOW);
   Serial.println("ud");
   doorsLocked = false;
-  delay(blockTimeMs);
 }
 
 void lockDoors()
@@ -56,7 +53,6 @@ void lockDoors()
   digitalWrite(doorsRelayPin2, LOW);
   Serial.println("ld");
   doorsLocked = true;
-  delay(blockTimeMs);
 }
 
 void checkSerial()
@@ -203,8 +199,7 @@ void setup()
       CHARACTERISTIC_UUID,
       BLECharacteristic::PROPERTY_READ |
           BLECharacteristic::PROPERTY_WRITE |
-          BLECharacteristic::PROPERTY_NOTIFY |
-          BLECharacteristic::PROPERTY_INDICATE);
+          BLECharacteristic::PROPERTY_NOTIFY);
 
   pCharacteristic->setCallbacks(new MyCallbacks());
   pCharacteristic->addDescriptor(new BLE2902());
@@ -215,8 +210,9 @@ void setup()
   // Start advertising
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x0);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06); // Set minimum connection interval to 7.5ms
+  pAdvertising->setMaxPreferred(0x10); // Set maximum connection interval to 20ms
   BLEDevice::startAdvertising();
 
   Serial.println("BLE Lock Controller Ready");
