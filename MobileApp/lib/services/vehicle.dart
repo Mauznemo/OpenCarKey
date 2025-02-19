@@ -8,12 +8,16 @@ class Vehicle {
   final String macAddress;
   final int associationId;
   final String pin;
+  final bool hasTrunkUnlock;
+  final bool hasEngineStart;
 
   Vehicle({
     required this.name,
     required this.macAddress,
     required this.associationId,
     required this.pin,
+    required this.hasTrunkUnlock,
+    required this.hasEngineStart,
   });
 
   // Convert vehicle to JSON
@@ -23,6 +27,8 @@ class Vehicle {
       'macAddress': macAddress,
       'associationId': associationId,
       'pin': pin,
+      'hasTrunkUnlock': hasTrunkUnlock,
+      'hasEngineStart': hasEngineStart,
     };
   }
 
@@ -33,6 +39,8 @@ class Vehicle {
       macAddress: json['macAddress'],
       associationId: json['associationId'],
       pin: json['pin'],
+      hasTrunkUnlock: json['hasTrunkUnlock'] ?? false,
+      hasEngineStart: json['hasEngineStart'] ?? false,
     );
   }
 }

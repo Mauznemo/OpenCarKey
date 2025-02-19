@@ -23,6 +23,9 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
   final _vehicleNameController = TextEditingController();
   final _pinController = TextEditingController();
 
+  bool _hasTrunkUnlock = false;
+  bool _hasEngineStart = false;
+
   @override
   void dispose() {
     // Clean up the controllers when the widget is disposed.
@@ -68,6 +71,45 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
               ),
             ),
           ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Switch(
+                value: _hasTrunkUnlock,
+                onChanged: (value) {
+                  setState(() {
+                    _hasTrunkUnlock = value;
+                  });
+                },
+              ),
+              SizedBox(width: 10),
+              const Text(
+                'Has Trunk Unlock',
+                style: TextStyle(fontSize: 16),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Switch(
+                value: _hasEngineStart,
+                onChanged: (value) {
+                  setState(() {
+                    _hasEngineStart = value;
+                  });
+                },
+              ),
+              SizedBox(width: 10),
+              const Text(
+                'Has Remote Engine Start',
+                style: TextStyle(fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(
+            height: 20,
+          ),
           FilledButton.icon(
               onPressed: () async {
                 if (_vehicleNameController.text.isEmpty ||
@@ -85,7 +127,9 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                       name: _vehicleNameController.text,
                       macAddress: result.macAddress,
                       associationId: result.associationId,
-                      pin: _pinController.text));
+                      pin: _pinController.text,
+                      hasTrunkUnlock: _hasTrunkUnlock,
+                      hasEngineStart: _hasEngineStart));
                   _vehicleNameController.clear();
                   _pinController.clear();
                   Navigator.pop(context);
