@@ -23,6 +23,8 @@ class _HomePageState extends State<HomePage> {
 
   late String _event = "--";
 
+  List<String> _notAuthenticatedDevices = [];
+
   Future<void> _requestPermission() async {
     Map<Permission, PermissionStatus> statuses = await [
       Permission.location,
@@ -88,7 +90,24 @@ class _HomePageState extends State<HomePage> {
     };
 
     BleEventListener.onMessageReceived = (macAddress, message) {
-      if (message.startsWith("ld")) {
+      if (message.startsWith("NOT_AUTH")) {
+        if (_notAuthenticatedDevices.contains(macAddress)) {
+          return;
+        }
+        _notAuthenticatedDevices.add(macAddress);
+        showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+                  title: const Text("Not Authenticated"),
+                  content: Text(
+                      "The device $macAddress you are trying to communicate with is not Authenticated. Please make sure the Pin is correct."),
+                  actions: [
+                    TextButton(
+                        onPressed: Navigator.of(context).pop,
+                        child: const Text("OK"))
+                  ],
+                ));
+      } else if (message.startsWith("ld")) {
         _vehicleEntries
             .firstWhere((element) =>
                 element.vehicleData.macAddress.toLowerCase() ==

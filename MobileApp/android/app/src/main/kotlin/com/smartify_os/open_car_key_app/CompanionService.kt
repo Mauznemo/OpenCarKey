@@ -1,5 +1,6 @@
 package com.smartify_os.open_car_key_app
 
+import VehicleStorage
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -23,10 +24,13 @@ class CompanionService: CompanionDeviceService() {
 
     private lateinit var writeCharacteristic: BluetoothGattCharacteristic
     private lateinit var gatt: BluetoothGatt
+    private lateinit var vehicleStorage: VehicleStorage
     companion object {
         var connected: Boolean = false
         var connectedDevices: MutableList<String> = mutableListOf()
     }
+
+    private var retyingAuth : Boolean = false;
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onDeviceAppeared(associationInfo: AssociationInfo) {
@@ -111,7 +115,7 @@ class CompanionService: CompanionDeviceService() {
                     // Enable notifications in the descriptor
                     gatt.writeDescriptor(descriptor)
 
-
+                    authenticateDevice(device.address);
                     val handler = Handler(Looper.getMainLooper())
                     handler.postDelayed({
                         if(sharedPreferences.getBoolean("auto_lock_enabled", false)){
@@ -132,6 +136,19 @@ class CompanionService: CompanionDeviceService() {
                 val receivedData = characteristic.value
                 var message = String(receivedData)
                 message = message.trim()
+
+                if(message.startsWith("AUTH_FAIL") && !retyingAuth){
+                    retyingAuth = true;
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        authenticateDevice(device.address)
+                        retyingAuth = false;
+                    }, 100)
+                    return
+                }
+
+                if(message.startsWith("NOT_AUTH")){
+                        authenticateDevice(device.address);
+                }
                 // Process the received message
                 Log.d("BLE", "Received message: $message")
                 EventBus.post("MESSAGE_RECEIVED:$message;${device.address}")
@@ -161,6 +178,14 @@ class CompanionService: CompanionDeviceService() {
         }
     }
 
+    fun authenticateDevice(macAddress: String) {
+        val pin = vehicleStorage.getVehicleByMac(macAddress)?.pin
+
+        if (pin != null){
+            sendString("AUTH:$pin")
+        }
+    }
+
     private val eventListener: (String) -> Unit = { event ->
         if (event.startsWith("SEND_MESSAGE:")) {
             val message = event.substringAfter(":")
@@ -173,6 +198,7 @@ class CompanionService: CompanionDeviceService() {
 
     override fun onCreate() {
         super.onCreate()
+        vehicleStorage = VehicleStorage(this)
         EventBus.subscribe(eventListener)
     }
 
