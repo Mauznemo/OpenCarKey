@@ -1,8 +1,36 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class BleService {
+
+  static Future<bool> scanForDevices() async {
+    try {
+      await FlutterBluePlus.adapterState
+          .where((val) => val == BluetoothAdapterState.on)
+          .first;
+
+      await FlutterBluePlus.startScan(
+        timeout: Duration(seconds: 15),
+      );
+
+      await FlutterBluePlus.isScanning.where((val) => val == false).first;
+      return true;
+    } on PlatformException catch (e) {
+      print("Error: ${e.message}");
+      return false;
+    }
+  }
+
+  static Future<void> stopScan() async {
+    try {
+      await FlutterBluePlus.stopScan();
+    } on PlatformException catch (e) {
+      print("Error: ${e.message}");
+    }
+  }
+
   static const MethodChannel _channel =
       MethodChannel('com.smartify_os.open_car_key_app/ble');
 

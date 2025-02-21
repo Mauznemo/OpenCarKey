@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:native_shared_preferences/native_shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Vehicle model class
 class Vehicle {
@@ -51,8 +51,8 @@ class VehicleStorage {
 
   // Save list of vehicles
   static Future<void> saveVehicles(List<Vehicle> vehicles) async {
-    final NativeSharedPreferences prefs =
-        await NativeSharedPreferences.getInstance();
+    final SharedPreferences prefs =
+        await SharedPreferences.getInstance();
     final String encodedData = json.encode(
       vehicles.map((vehicle) => vehicle.toJson()).toList(),
     );
@@ -61,8 +61,8 @@ class VehicleStorage {
 
   // Get list of vehicles
   static Future<List<Vehicle>> getVehicles() async {
-    final NativeSharedPreferences prefs =
-        await NativeSharedPreferences.getInstance();
+    final SharedPreferences prefs =
+        await SharedPreferences.getInstance();
     final String? encodedData = prefs.getString(_key);
 
     if (encodedData == null) return [];
@@ -98,8 +98,8 @@ class VehicleStorage {
 
   // Clear all vehicles
   static Future<void> clearVehicles() async {
-    final NativeSharedPreferences prefs =
-        await NativeSharedPreferences.getInstance();
+    final SharedPreferences prefs =
+        await SharedPreferences.getInstance();
     await prefs.remove(_key);
   }
 }

@@ -37,8 +37,9 @@ dependencies:
 
   dynamic_color: ^1.7.0
   permission_handler: ^11.3.1
-  # shared_preferences: ^2.5.1
-  native_shared_preferences: ^2.0.10
+  shared_preferences: ^2.5.2
+  flutter_blue_plus: ^1.35.3
+#  native_shared_preferences: ^2.0.10
 
 dev_dependencies:
   flutter_test:

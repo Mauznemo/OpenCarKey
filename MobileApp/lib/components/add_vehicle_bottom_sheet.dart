@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_car_key_app/components/scan_dialog.dart';
 
 import '../services/ble_service.dart';
 import '../services/vehicle.dart';
@@ -117,7 +118,13 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   return;
                 }
 
+                showDialog(
+                  context: context,
+                  builder: (context) => const ScanDialog(),
+                );
+
                 var result = await BleService.associateBle();
+
                 if (!result.success) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     content: Text(result.errorMessage),
