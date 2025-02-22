@@ -10,9 +10,7 @@ class ScanDialog extends StatefulWidget {
 }
 
 class _ScanDialogState extends State<ScanDialog> {
-  final List<Map<String, dynamic>> devices = [
-    
-  ];
+  final List<Map<String, dynamic>> devices = [];
 
   @override
   void initState() {
@@ -21,14 +19,18 @@ class _ScanDialogState extends State<ScanDialog> {
     var subscription = FlutterBluePlus.onScanResults.listen(
       (results) {
         if (results.isNotEmpty) {
-          ScanResult r = results.last; // the most recently found device
+          ScanResult r = results.last;
           print(
               '${r.device.remoteId}: "${r.advertisementData.advName}" found!');
           devices.add({
-            'id': r.device.remoteId,
-            'name': r.advertisementData.advName,
+            'id': r.device.remoteId.toString(),
+            'name': r.advertisementData.advName == ''
+                ? 'Unknown'
+                : r.advertisementData.advName,
             'rssi': r.rssi,
+            'device': r.device,
           });
+          setState(() {});
         }
       },
       onError: (e) => print(e),
@@ -45,27 +47,41 @@ class _ScanDialogState extends State<ScanDialog> {
         height: MediaQuery.of(context).size.height * 0.6,
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               'Scanning for Bluetooth devices',
-              style: TextStyle(fontSize:18),
+              style: TextStyle(fontSize: 18),
             ),
             const SizedBox(height: 16),
-            if (devices.isEmpty)
-              const Center(child: CircularProgressIndicator())
-            else
-              Expanded(
-                child: ListView.builder(
-                  itemCount: devices.length,
-                  itemBuilder: (context, index) {
-                    return ListTile(
-                      title: Text(devices[index]['name']),
-                      subtitle: Text(devices[index]['id']),
-                      trailing: Text('${devices[index]['rssi']} dBm'),
-                    );
-                  },
-                ),
-              ),
+            Expanded(
+              child: devices.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView.builder(
+                      itemCount: devices.length,
+                      itemBuilder: (context, index) {
+                        return ListTile(
+                          title: Text(devices[index]['name']),
+                          subtitle: Text(devices[index]['id']),
+                          trailing: Text('${devices[index]['rssi']} dBm'),
+                          onTap: () async {
+                            final device = await BleService.connectToDevice(
+                                devices[index]['device']);
+
+                            if (device != null) {
+                              Navigator.of(context).pop(device);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Failed to connect to device'),
+                                ),
+                              );
+                            }
+                          },
+                        );
+                      },
+                    ),
+            ),
           ],
         ),
       ),
