@@ -24,6 +24,8 @@ bool deviceConnected = false;
 bool isAuthenticated = false;
 bool autoLocking = false;
 
+bool oldDeviceConnected = false;
+
 class MyServerCallbacks : public BLEServerCallbacks
 {
     void onConnect(BLEServer *pServer)
@@ -47,9 +49,6 @@ class MyServerCallbacks : public BLEServerCallbacks
                 onLocked();
         }
         autoLocking = false;
-
-        delay(500);                  // Give the bluetooth stack the chance to get things ready
-        pServer->startAdvertising(); // Restart advertising
 
         if (onDisconnected)
             onDisconnected();
@@ -132,6 +131,10 @@ class MyCallbacks : public BLECharacteristicCallbacks
             else if (command == "al")
             {
                 autoLocking = true;
+
+                pCharacteristic->setValue("ud");
+                pCharacteristic->notify();
+
                 if (isLocked)
                 {
                     if (onUnlocked)
@@ -178,4 +181,19 @@ void setupBluetooth()
     pAdvertising->setMinPreferred(0x06); // Set minimum connection interval to 7.5ms
     pAdvertising->setMaxPreferred(0x10); // Set maximum connection interval to 20ms
     BLEDevice::startAdvertising();
+}
+
+void bluetoothLoop()
+{
+    if (!deviceConnected && oldDeviceConnected)
+    {
+        delay(500);                  // Give the bluetooth stack the chance to get things ready
+        pServer->startAdvertising(); // Restart advertising
+        oldDeviceConnected = deviceConnected;
+    }
+
+    if (deviceConnected && !oldDeviceConnected)
+    {
+        oldDeviceConnected = deviceConnected;
+    }
 }

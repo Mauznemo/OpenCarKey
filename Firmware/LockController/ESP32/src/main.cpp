@@ -81,4 +81,5 @@ void setup()
 void loop()
 {
   checkSerial();
+  bluetoothLoop();
 }

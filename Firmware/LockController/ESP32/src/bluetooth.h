@@ -26,5 +26,7 @@ extern bool isLocked;
 
 /// @brief Sets up bluetooth
 void setupBluetooth();
+/// @brief Loop need for bluetooth to work
+void bluetoothLoop();
 
 #endif
