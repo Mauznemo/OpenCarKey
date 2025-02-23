@@ -49,5 +49,9 @@
     <string>This app needs Bluetooth to function</string>
     <key>NSBluetoothPeripheralUsageDescription</key>
     <string>This app needs Bluetooth to function</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>bluetooth-central</string>
+    </array>
 </dict>
 </plist>

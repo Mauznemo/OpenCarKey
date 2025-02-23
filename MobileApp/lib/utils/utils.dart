@@ -20,6 +20,8 @@ Future<void> initializeBle() async {
   if (!kIsWeb && Platform.isAndroid) {
     await FlutterBluePlus.turnOn();
   }
+
+  FlutterBluePlus.setOptions(restoreState: true);
 }
 
 IconData getConnectionStateIcon(BluetoothConnectionState state) {
