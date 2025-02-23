@@ -13,7 +13,7 @@ Future<void> initializeApp() async {
 
 Future<void> initializeBle() async {
   if (await FlutterBluePlus.isSupported == false) {
-    print("Bluetooth not supported by this device");
+    print('Bluetooth not supported by this device');
     return;
   }
 

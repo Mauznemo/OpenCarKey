@@ -17,7 +17,7 @@ class BleService {
       await FlutterBluePlus.isScanning.where((val) => val == false).first;
       return true;
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
       return false;
     }
   }
@@ -26,7 +26,7 @@ class BleService {
     try {
       await FlutterBluePlus.stopScan();
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
     }
   }
 
@@ -34,14 +34,14 @@ class BleService {
       BluetoothDevice device) async {
     try {
       await device.connect(autoConnect: true, mtu: null).catchError((e) {
-        print("Connection error: $e");
+        print('Connection error: $e');
       });
 
-      print("Connected to device: ${device.advName}");
+      print('Connected to device: ${device.advName}');
 
       return device;
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
       return null;
     }
   }
@@ -50,7 +50,7 @@ class BleService {
     try {
       await device.disconnect();
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
     }
   }
 
@@ -59,7 +59,7 @@ class BleService {
       final devices = FlutterBluePlus.connectedDevices;
       return devices;
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
       return [];
     }
   }
@@ -68,25 +68,25 @@ class BleService {
       BluetoothDevice device, String message) async {
     try {
       if (!device.isConnected) {
-        print("Device is not connected");
+        print('Device is not connected');
         return null;
       }
 
       final services = await device.discoverServices();
       final service = services.firstWhere((service) =>
-          service.uuid == Guid("0000ffe0-0000-1000-8000-00805f9b34fb"));
+          service.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'));
       final characteristic = service.characteristics.firstWhere(
           (characteristic) =>
               characteristic.uuid ==
-              Guid("0000ffe1-0000-1000-8000-00805f9b34fb"));
+              Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
 
-      print("Sending message: $message");
+      print('Sending message: $message');
       await characteristic.write(utf8.encode(message));
       final response = utf8.decode(await characteristic.read());
-      print("Response: $response");
+      print('Response: $response');
       return characteristic;
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
       return null;
     }
   }
@@ -97,12 +97,12 @@ class BleService {
   static Future<BleAssociationResult> associateBle() async {
     try {
       final String result = await _channel.invokeMethod('associateBle');
-      print("Success: $result");
-      var results = result.split(", ");
-      return BleAssociationResult(true, int.parse(results[1]), results[0], "");
+      print('Success: $result');
+      var results = result.split(', ');
+      return BleAssociationResult(true, int.parse(results[1]), results[0], '');
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
-      return BleAssociationResult(false, -1, "", e.message ?? "");
+      print('Error: ${e.message}');
+      return BleAssociationResult(false, -1, '', e.message ?? '');
     }
   }
 
@@ -112,7 +112,7 @@ class BleService {
       await _channel.invokeMethod('disassociateBle',
           {'associationId': associationId, 'macAddress': macAddress});
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
     }
   }
 
@@ -123,8 +123,8 @@ class BleService {
       //final List<dynamic> result = await _channel.invokeMethod('getAssociated');
       //return result.map((item) => AssociationInfo.fromJson(item)).toList();
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
-      return "";
+      print('Error: ${e.message}');
+      return '';
     }
   }
 
@@ -132,14 +132,14 @@ class BleService {
     try {
       await _channel.invokeMethod('postEvent', {'message': message});
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
     }
   }
 
   static Future<List<String>> getConnectedDevicesOld() async {
     try {
       var result = await _channel.invokeMethod('getConnectedDevices');
-      print("Success: $result");
+      print('Success: $result');
 
       // Ensure the result is a valid string
       if (result == null || result.toString().isEmpty) {
@@ -150,13 +150,13 @@ class BleService {
       try {
         return List<String>.from(jsonDecode(result));
       } catch (e) {
-        print("JSON parsing error, falling back to split: $e");
+        print('JSON parsing error, falling back to split: $e');
       }
 
       // Option 2: If the Kotlin side sends a comma-separated string (e.g., "Device1,Device2")
-      return result.toString().split(",").map((e) => e.trim()).toList();
+      return result.toString().split(',').map((e) => e.trim()).toList();
     } on PlatformException catch (e) {
-      print("Error: ${e.message}");
+      print('Error: ${e.message}');
       return [];
     }
   }

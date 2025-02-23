@@ -24,9 +24,9 @@ Future<void> main() async {
           darkTheme:
               ThemeData(colorScheme: darkColorScheme, useMaterial3: true),
           themeMode: ThemeMode.system,
-          initialRoute: "/",
+          initialRoute: '/',
           routes: {
-            "/": (context) => const HomePage(),
+            '/': (context) => const HomePage(),
           },
         );
       },

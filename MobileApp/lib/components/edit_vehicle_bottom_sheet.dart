@@ -152,7 +152,7 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
 
                   if (!isValid) return;
 
-                  await BleService.sendMessage(widget.vehicle.device, "AUTH:${pinController.text}");
+                  await BleService.sendMessage(widget.vehicle.device, 'AUTH:${pinController.text}');
 
                   await VehicleStorage.updateVehicle(VehicleData(
                       name: vehicleNameController.text,
@@ -167,7 +167,7 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                   setState(() {});
                 },
                 icon: Icon(Icons.check),
-                label: Text("Done")),
+                label: Text('Done')),
             const SizedBox(height: 30),
           ],
         ),

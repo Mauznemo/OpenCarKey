@@ -145,7 +145,7 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                     return print('No device connected');
 
                   BleService.sendMessage(
-                      connectedDevice, "AUTH:${pinController.text.trim()}");
+                      connectedDevice, 'AUTH:${pinController.text.trim()}');
 
                   VehicleStorage.addVehicle(
                     VehicleData(
@@ -163,7 +163,7 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   setState(() {});
                 },
                 icon: Icon(Icons.add),
-                label: Text("Connect now")),
+                label: Text('Connect now')),
             const SizedBox(height: 30),
           ],
         ),

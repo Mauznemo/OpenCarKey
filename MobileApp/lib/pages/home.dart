@@ -21,7 +21,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<Vehicle> vehicles = [];
 
-  late String eventData = "--";
+  late String eventData = '--';
 
   final List<String> notAuthenticatedDevices = [];
 
@@ -53,7 +53,7 @@ class _HomePageState extends State<HomePage> {
 
   void connectDevices() async {
     for (final vehicle in vehicles) {
-      await vehicle.device.connect(autoConnect: true);
+      await BleService.connectToDevice(vehicle.device);
     }
   }
 
@@ -71,13 +71,13 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (connectedDevices.isNotEmpty)
-      await BleService.sendMessage(connectedDevices.first, "ds");
+      await BleService.sendMessage(connectedDevices.first, 'ds');
 
     setState(() {});
   }
 
   void processMessage(String macAddress, String message) {
-    if (message.startsWith("NOT_AUTH") || message.startsWith("AUTH_FAIL")) {
+    if (message.startsWith('NOT_AUTH') || message.startsWith('AUTH_FAIL')) {
       if (notAuthenticatedDevices.contains(macAddress)) {
         return;
       }
@@ -85,33 +85,33 @@ class _HomePageState extends State<HomePage> {
       showDialog(
           context: context,
           builder: (context) => AlertDialog(
-                title: const Text("Not Authenticated"),
+                title: const Text('Not Authenticated'),
                 content: Text(
-                    "The device $macAddress you are trying to communicate with is not authenticated. Please make sure the pin is correct."),
+                    'The device $macAddress you are trying to communicate with is not authenticated. Please make sure the pin is correct.'),
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
-                      child: const Text("OK"))
+                      child: const Text('OK'))
                 ],
               ));
-    } else if (message.startsWith("AUTH_OK")) {
+    } else if (message.startsWith('AUTH_OK')) {
       if (notAuthenticatedDevices.contains(macAddress)) {
         notAuthenticatedDevices.remove(macAddress);
       }
-    } else if (message.startsWith("ld")) {
+    } else if (message.startsWith('ld')) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
           .doorsLocked = true);
-    } else if (message.startsWith("ud")) {
+    } else if (message.startsWith('ud')) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
           .doorsLocked = false);
-    } else if (message.startsWith("ut")) {
+    } else if (message.startsWith('ut')) {
       scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(
-          content: Text("Trunk unlocked"),
+          content: Text('Trunk unlocked'),
         ),
       );
     }
@@ -130,7 +130,7 @@ class _HomePageState extends State<HomePage> {
 
       if (event.connectionState == BluetoothConnectionState.connected)
         await BleService.sendMessage(
-            changedVehicle.device, "AUTH:${changedVehicle.data.pin}");
+            changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
 
       setState(() =>
           vehicles.firstWhere(
@@ -139,8 +139,8 @@ class _HomePageState extends State<HomePage> {
     });
 
     FlutterBluePlus.events.onCharacteristicReceived.listen((event) {
-      eventData = "Characteristic received: ${utf8.decode(event.value)}";
-      print("Characteristic received: ${utf8.decode(event.value)}");
+      eventData = 'Characteristic received: ${utf8.decode(event.value)}';
+      print('Characteristic received: ${utf8.decode(event.value)}');
 
       processMessage(
           event.device.remoteId.toString(), utf8.decode(event.value));
@@ -153,7 +153,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
-          title: const Text("Open Car Key"),
+          title: const Text('Open Car Key'),
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
@@ -232,7 +232,7 @@ class _HomePageState extends State<HomePage> {
                               padding:
                                   const EdgeInsets.only(left: 8.0, bottom: 4.0),
                               child: Text(
-                                  "Mac Address: ${vehicle.data.macAddress}, Association ID: ${null}",
+                                  'Mac Address: ${vehicle.data.macAddress}, Association ID: ${null}',
                                   style: const TextStyle(fontSize: 10)),
                             ),
                             Row(
@@ -246,7 +246,7 @@ class _HomePageState extends State<HomePage> {
                                       ? () async {
                                           await BleService.sendMessage(
                                             vehicle.device,
-                                            vehicle.doorsLocked ? "ud" : "ld",
+                                            vehicle.doorsLocked ? 'ud' : 'ld',
                                           );
                                         }
                                       : null,
@@ -258,7 +258,7 @@ class _HomePageState extends State<HomePage> {
                                             ? () async {
                                                 await BleService.sendMessage(
                                                   vehicle.device,
-                                                  "ut",
+                                                  'ut',
                                                 );
                                               }
                                             : null,
@@ -270,7 +270,7 @@ class _HomePageState extends State<HomePage> {
                                         onPressed: vehicle.device.isConnected
                                             ? () {
                                                 BleService.postEvent(
-                                                    "SEND_MESSAGE:st\n");
+                                                    'SEND_MESSAGE:st\n');
                                               }
                                             : null,
                                       )
@@ -285,19 +285,19 @@ class _HomePageState extends State<HomePage> {
                             final confirmed = showDialog(
                               context: context,
                               builder: (context) => AlertDialog(
-                                title: const Text("Delete Vehicle"),
+                                title: const Text('Delete Vehicle'),
                                 content: Text(
-                                    "Are you sure you want to delete ${vehicle.data.name}?"),
+                                    'Are you sure you want to delete ${vehicle.data.name}?'),
                                 actions: [
                                   TextButton(
                                     onPressed: () =>
                                         Navigator.of(context).pop(false),
-                                    child: const Text("Cancel"),
+                                    child: const Text('Cancel'),
                                   ),
                                   TextButton(
                                     onPressed: () =>
                                         Navigator.of(context).pop(true),
-                                    child: const Text("Delete"),
+                                    child: const Text('Delete'),
                                   ),
                                 ],
                               ),

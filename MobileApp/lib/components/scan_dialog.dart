@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:open_car_key_app/services/ble_service.dart';
+
+import '../services/ble_service.dart';
 
 class ScanDialog extends StatefulWidget {
-  const ScanDialog({Key? key}) : super(key: key);
+  const ScanDialog({super.key});
 
   @override
   State<ScanDialog> createState() => _ScanDialogState();
