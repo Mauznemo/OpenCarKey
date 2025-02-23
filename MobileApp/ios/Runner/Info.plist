@@ -47,5 +47,7 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
     <string>This app needs Bluetooth to function</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>This app needs Bluetooth to function</string>
 </dict>
 </plist>

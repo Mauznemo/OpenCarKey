@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
@@ -24,15 +23,6 @@ class _HomePageState extends State<HomePage> {
   late String eventData = '--';
 
   final List<String> notAuthenticatedDevices = [];
-
-  Future<void> _requestPermission() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.location,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.notification,
-    ].request();
-  }
 
   void getVehicles() async {
     final vehiclesData = await VehicleStorage.getVehicles();

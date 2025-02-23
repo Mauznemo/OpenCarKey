@@ -14,7 +14,6 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   dynamic_color: ^1.7.0
-  permission_handler: ^11.3.1
   shared_preferences: ^2.5.2
   flutter_blue_plus: ^1.35.3
 
