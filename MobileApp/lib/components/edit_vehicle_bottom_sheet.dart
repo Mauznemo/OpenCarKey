@@ -162,8 +162,7 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                       hasEngineStart: hasEngineStart));
                   vehicleNameController.clear();
                   pinController.clear();
-                  Navigator.pop(context);
-                  //_vehicles = ObjectBox.instance.getVehicles();
+                  if (context.mounted) Navigator.pop(context);
                   setState(() {});
                 },
                 icon: Icon(Icons.check),

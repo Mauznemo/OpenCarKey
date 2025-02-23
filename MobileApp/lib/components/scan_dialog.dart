@@ -69,6 +69,8 @@ class _ScanDialogState extends State<ScanDialog> {
                             final device = await BleService.connectToDevice(
                                 devices[index]['device']);
 
+                            if (!context.mounted) return;
+
                             if (device != null) {
                               Navigator.of(context).pop(device);
                             } else {

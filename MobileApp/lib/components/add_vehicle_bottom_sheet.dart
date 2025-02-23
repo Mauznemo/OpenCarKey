@@ -158,8 +158,7 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   );
                   vehicleNameController.clear();
                   pinController.clear();
-                  Navigator.pop(context);
-                  //_vehicles = ObjectBox.instance.getVehicles();
+                  if (context.mounted) Navigator.pop(context);
                   setState(() {});
                 },
                 icon: Icon(Icons.add),
