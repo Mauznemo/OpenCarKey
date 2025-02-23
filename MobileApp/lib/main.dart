@@ -12,7 +12,6 @@ Future<void> main() async {
   runApp(
     DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
-        // Fallback to default color schemes if dynamic colors are not available
         ColorScheme lightColorScheme =
             lightDynamic ?? ColorScheme.fromSeed(seedColor: Colors.blue);
         ColorScheme darkColorScheme = darkDynamic ??
@@ -25,7 +24,6 @@ Future<void> main() async {
           darkTheme:
               ThemeData(colorScheme: darkColorScheme, useMaterial3: true),
           themeMode: ThemeMode.system,
-          // Automatically switch based on system settings
           initialRoute: "/",
           routes: {
             "/": (context) => const HomePage(),

@@ -21,7 +21,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<Vehicle> vehicles = [];
 
-  late String _event = "--";
+  late String eventData = "--";
 
   final List<String> notAuthenticatedDevices = [];
 
@@ -53,7 +53,7 @@ class _HomePageState extends State<HomePage> {
 
   void connectDevices() async {
     for (final vehicle in vehicles) {
-      await vehicle.device.connect();
+      await vehicle.device.connect(autoConnect: true);
     }
   }
 
@@ -139,7 +139,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     FlutterBluePlus.events.onCharacteristicReceived.listen((event) {
-      _event = "Characteristic received: ${utf8.decode(event.value)}";
+      eventData = "Characteristic received: ${utf8.decode(event.value)}";
       print("Characteristic received: ${utf8.decode(event.value)}");
 
       processMessage(
@@ -325,7 +325,7 @@ class _HomePageState extends State<HomePage> {
                     }),
                   );
                 }),
-            Text(_event),
+            Text(eventData),
           ],
         ));
   }
