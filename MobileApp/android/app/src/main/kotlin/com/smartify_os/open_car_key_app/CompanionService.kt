@@ -117,6 +117,15 @@ class CompanionService: CompanionDeviceService() {
 
                     authenticateDevice(device.address);
                     val handler = Handler(Looper.getMainLooper())
+
+                    handler.postDelayed({
+                        authenticateDevice(device.address);
+                    }, 250)
+
+                    handler.postDelayed({
+                        authenticateDevice(device.address);
+                    }, 900)
+
                     handler.postDelayed({
                         if(sharedPreferences.getBoolean("auto_lock_enabled", false)){
                             sendString("al\n")
