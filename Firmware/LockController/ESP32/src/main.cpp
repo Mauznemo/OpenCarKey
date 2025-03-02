@@ -1,37 +1,28 @@
 // Lock Controller code for ESP32 (Not tested yet!)
 #include <Arduino.h>
 #include "bluetooth.h"
+#include <ESP32Servo.h>
 
 // Pin definitions
-const int doorsRelayPin1 = 15;
-const int doorsRelayPin2 = 16;
-const int trunkRelayPin1 = 17;
+const int lockServoPin = 13;
 
-void openTrunk()
-{
-  digitalWrite(trunkRelayPin1, HIGH);
-  delay(50);
-  digitalWrite(trunkRelayPin1, LOW);
-  Serial.println("ut");
-}
+Servo lockServo;
 
 void unlock()
 {
-  digitalWrite(doorsRelayPin1, HIGH);
-  digitalWrite(doorsRelayPin2, LOW);
-  delay(50);
-  digitalWrite(doorsRelayPin1, LOW);
-  digitalWrite(doorsRelayPin2, LOW);
+  lockServo.attach(lockServoPin);
+  lockServo.write(120);
+  delay(1000);
+  lockServo.detach();
   Serial.println("ud");
 }
 
 void lock()
 {
-  digitalWrite(doorsRelayPin1, LOW);
-  digitalWrite(doorsRelayPin2, HIGH);
-  delay(50);
-  digitalWrite(doorsRelayPin1, LOW);
-  digitalWrite(doorsRelayPin2, LOW);
+  lockServo.attach(lockServoPin);
+  lockServo.write(80);
+  delay(1000);
+  lockServo.detach();
   Serial.println("ld");
 }
 
@@ -48,10 +39,6 @@ void checkSerial()
     {
       unlock();
     }
-    else if (data == "ut")
-    {
-      openTrunk();
-    }
   }
 }
 
@@ -59,21 +46,14 @@ void setup()
 {
   Serial.println("Starting BLE Lock Controller");
   // Initialize pins
-  pinMode(doorsRelayPin1, OUTPUT);
-  pinMode(doorsRelayPin2, OUTPUT);
-  pinMode(trunkRelayPin1, OUTPUT);
-
-  digitalWrite(doorsRelayPin1, LOW);
-  digitalWrite(doorsRelayPin2, LOW);
-  digitalWrite(trunkRelayPin1, LOW);
 
   Serial.begin(115200);
+  lock();
 
   setupBluetooth();
 
   onLocked = lock;
   onUnlocked = unlock;
-  onTrunkOpend = openTrunk;
 
   Serial.println("BLE Lock Controller Ready");
 }
