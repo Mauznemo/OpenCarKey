@@ -259,8 +259,7 @@ class _HomePageState extends State<HomePage> {
                                         icon: const Icon(Icons.restart_alt),
                                         onPressed: vehicle.device.isConnected
                                             ? () {
-                                                BleService.postEvent(
-                                                    'SEND_MESSAGE:st\n');
+                                                //TODO: Implement engine start
                                               }
                                             : null,
                                       )
