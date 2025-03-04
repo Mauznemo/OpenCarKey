@@ -17,7 +17,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<Vehicle> vehicles = [];
 
   late String eventData = '--';
@@ -37,8 +37,6 @@ class _HomePageState extends State<HomePage> {
     });
 
     connectDevices();
-
-    // getConnectedDevices();
   }
 
   void connectDevices() async {
@@ -138,6 +136,24 @@ class _HomePageState extends State<HomePage> {
       setState(() {});
     });
   }
+
+  /*@override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Handle app state changes
+    if (state == AppLifecycleState.resumed) {
+      // App in foreground - start active scanning
+      BleService.scanForDevices();
+    } else if (state == AppLifecycleState.paused) {
+      // App in background - handle according to platform
+      if (Platform.isAndroid) {
+        // For Android, scanning should continue through the background service
+        scanSubscription?.cancel();
+      } else if (Platform.isIOS) {
+        // For iOS, we continue scanning but at a less frequent interval
+        // The system will handle waking the app when devices are found
+      }
+    }
+  }*/
 
   @override
   Widget build(BuildContext context) {
