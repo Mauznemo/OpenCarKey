@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../services/ble_service.dart';
-import '../services/vehicle.dart';
+import '../services/vehicle_service.dart';
+import '../types/vehicle.dart';
+import 'scan_dialog.dart';
 
 class AddVehicleBottomSheet extends StatefulWidget {
   const AddVehicleBottomSheet({super.key});
@@ -20,17 +23,19 @@ class AddVehicleBottomSheet extends StatefulWidget {
 }
 
 class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
-  final _vehicleNameController = TextEditingController();
-  final _pinController = TextEditingController();
+  final formKey = GlobalKey<FormState>();
+  final vehicleNameController = TextEditingController();
+  final pinController = TextEditingController();
 
-  bool _hasTrunkUnlock = false;
-  bool _hasEngineStart = false;
+  bool hasTrunkUnlock = false;
+  bool hasEngineStart = false;
+
+  bool isValid = true;
 
   @override
   void dispose() {
-    // Clean up the controllers when the widget is disposed.
-    _vehicleNameController.dispose();
-    _pinController.dispose();
+    vehicleNameController.dispose();
+    pinController.dispose();
     super.dispose();
   }
 
@@ -39,108 +44,128 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
     return Container(
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 200),
-            child: Divider(thickness: 4),
-          ),
-          const Text(
-            'Add Vehicle',
-            style: TextStyle(fontSize: 24),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              controller: _vehicleNameController,
-              decoration: const InputDecoration(
-                border: UnderlineInputBorder(),
-                labelText: 'Vehicle Name',
+      child: Form(
+        key: formKey,
+        onChanged: () {
+          if (!isValid) formKey.currentState?.validate();
+        },
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 200),
+              child: Divider(thickness: 4),
+            ),
+            const Text(
+              'Add Vehicle',
+              style: TextStyle(fontSize: 24),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextFormField(
+                controller: vehicleNameController,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a vehicle name';
+                  }
+                  return null;
+                },
+                decoration: const InputDecoration(
+                  border: UnderlineInputBorder(),
+                  labelText: 'Vehicle Name',
+                ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              controller: _pinController,
-              decoration: InputDecoration(
-                border: UnderlineInputBorder(),
-                labelText: 'Pin',
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextFormField(
+                controller: pinController,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a pin';
+                  }
+                  return null;
+                },
+                decoration: InputDecoration(
+                  border: UnderlineInputBorder(),
+                  labelText: 'Pin',
+                ),
               ),
             ),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Switch(
-                value: _hasTrunkUnlock,
-                onChanged: (value) {
-                  setState(() {
-                    _hasTrunkUnlock = value;
-                  });
-                },
-              ),
-              SizedBox(width: 10),
-              const Text(
-                'Has Trunk Unlock',
-                style: TextStyle(fontSize: 16),
-              ),
-            ],
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Switch(
-                value: _hasEngineStart,
-                onChanged: (value) {
-                  setState(() {
-                    _hasEngineStart = value;
-                  });
-                },
-              ),
-              SizedBox(width: 10),
-              const Text(
-                'Has Remote Engine Start',
-                style: TextStyle(fontSize: 16),
-              ),
-            ],
-          ),
-          const SizedBox(
-            height: 20,
-          ),
-          FilledButton.icon(
-              onPressed: () async {
-                if (_vehicleNameController.text.isEmpty ||
-                    _pinController.text.isEmpty) {
-                  return;
-                }
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Switch(
+                  value: hasTrunkUnlock,
+                  onChanged: (value) {
+                    setState(() => hasTrunkUnlock = value);
+                  },
+                ),
+                SizedBox(width: 10),
+                const Text(
+                  'Has Trunk Unlock',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Switch(
+                  value: hasEngineStart,
+                  onChanged: (value) {
+                    setState(() => hasEngineStart = value);
+                  },
+                ),
+                SizedBox(width: 10),
+                const Text(
+                  'Has Remote Engine Start',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+            const SizedBox(
+              height: 20,
+            ),
+            FilledButton.icon(
+                onPressed: () async {
+                  isValid = formKey.currentState!.validate() == true;
 
-                var result = await BleService.associateBle();
-                if (!result.success) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(result.errorMessage),
-                  ));
-                } else {
-                  VehicleStorage.addVehicle(Vehicle(
-                      name: _vehicleNameController.text,
-                      macAddress: result.macAddress,
-                      associationId: result.associationId,
-                      pin: _pinController.text,
-                      hasTrunkUnlock: _hasTrunkUnlock,
-                      hasEngineStart: _hasEngineStart));
-                  _vehicleNameController.clear();
-                  _pinController.clear();
-                  Navigator.pop(context);
-                  //_vehicles = ObjectBox.instance.getVehicles();
+                  if (!isValid) return;
+
+                  final connectedDevice = await showDialog(
+                    context: context,
+                    builder: (context) => const ScanDialog(),
+                  ) as BluetoothDevice?;
+
+                  print(connectedDevice);
+
+                  if (connectedDevice == null)
+                    return print('No device connected');
+
+                  BleService.sendMessage(
+                      connectedDevice, 'AUTH:${pinController.text.trim()}');
+
+                  VehicleStorage.addVehicle(
+                    VehicleData(
+                      name: vehicleNameController.text.trim(),
+                      macAddress: connectedDevice.remoteId.toString(),
+                      pin: pinController.text.trim(),
+                      hasTrunkUnlock: hasTrunkUnlock,
+                      hasEngineStart: hasEngineStart,
+                    ),
+                  );
+                  vehicleNameController.clear();
+                  pinController.clear();
+                  if (context.mounted) Navigator.pop(context);
                   setState(() {});
-                }
-              },
-              icon: Icon(Icons.add),
-              label: Text("Connect now")),
-          const SizedBox(height: 30),
-        ],
+                },
+                icon: Icon(Icons.add),
+                label: Text('Connect now')),
+            const SizedBox(height: 30),
+          ],
+        ),
       ),
     );
   }

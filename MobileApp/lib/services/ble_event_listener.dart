@@ -15,36 +15,36 @@ class BleEventListener {
 
   static void listenForBleEvents(Function(String) onEventReceived) {
     _eventChannel.receiveBroadcastStream().listen((event) {
-      print("BLE Event: $event");
+      print('BLE Event: $event');
       String eventString = event.toString();
       onEventReceived(event);
-      if (eventString.startsWith("DEVICE_APPEARED:")) {
-        onDeviceAppeared?.call(eventString.substringAfter(":"));
-      } else if (eventString.startsWith("DEVICE_CONNECTED:")) {
-        onDeviceConnected?.call(eventString.substringAfter(":"));
-      } else if (eventString.startsWith("DEVICE_DISCONNECTED:")) {
-        onDeviceDisconnected?.call(eventString.substringAfter(":"));
-      } else if (eventString.startsWith("DEVICE_READY:")) {
-        onDeviceDeviceReady?.call(eventString.substringAfter(":"));
-      } else if (eventString.startsWith("MESSAGE_RECEIVED:")) {
-        var parts = eventString.substringAfter(":").split(";");
+      if (eventString.startsWith('DEVICE_APPEARED:')) {
+        onDeviceAppeared?.call(eventString.substringAfter(':'));
+      } else if (eventString.startsWith('DEVICE_CONNECTED:')) {
+        onDeviceConnected?.call(eventString.substringAfter(':'));
+      } else if (eventString.startsWith('DEVICE_DISCONNECTED:')) {
+        onDeviceDisconnected?.call(eventString.substringAfter(':'));
+      } else if (eventString.startsWith('DEVICE_READY:')) {
+        onDeviceDeviceReady?.call(eventString.substringAfter(':'));
+      } else if (eventString.startsWith('MESSAGE_RECEIVED:')) {
+        var parts = eventString.substringAfter(':').split(';');
         onMessageReceived?.call(parts[1], parts[0]);
-      } else if (eventString.startsWith("MESSAGE_SENT:")) {
-        onMessageSent?.call(eventString.substringAfter(":"), "");
+      } else if (eventString.startsWith('MESSAGE_SENT:')) {
+        onMessageSent?.call(eventString.substringAfter(':'), '');
       }
     }, onError: (error) {
-      print("BLE Event Error: $error");
+      print('BLE Event Error: $error');
     });
   }
 }
 
 extension on String {
   String substringAfter(String s) {
-    int index = this.indexOf(s);
+    int index = indexOf(s);
     if (index == -1) {
       return this;
     } else {
-      return this.substring(index + s.length);
+      return substring(index + s.length);
     }
   }
 }
