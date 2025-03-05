@@ -58,9 +58,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       vehicle.device.connect();
     }
 
-    if (connectedDevices.isNotEmpty)
-      await BleService.sendMessage(connectedDevices.first, 'ds');
-
     setState(() {});
   }
 
@@ -119,6 +116,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (event.connectionState == BluetoothConnectionState.connected)
         await BleService.sendMessage(
             changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
+      await BleService.sendMessage(changedVehicle.device, 'ds');
 
       setState(() =>
           vehicles.firstWhere(
