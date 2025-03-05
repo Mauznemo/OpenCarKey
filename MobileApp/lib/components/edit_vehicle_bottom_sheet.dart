@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../services/ble_service.dart';
+import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/vehicle.dart';
 
@@ -152,7 +152,8 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
 
                   if (!isValid) return;
 
-                  await BleService.sendMessage(widget.vehicle.device, 'AUTH:${pinController.text}');
+                  BleBackgroundService.sendMessage(
+                      widget.vehicle.device, 'AUTH:${pinController.text}');
 
                   await VehicleStorage.updateVehicle(VehicleData(
                       name: vehicleNameController.text,

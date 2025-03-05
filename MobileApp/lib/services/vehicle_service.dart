@@ -7,9 +7,13 @@ import '../types/vehicle.dart';
 class VehicleStorage {
   static const String _key = 'vehicles';
 
+  static Future<void> reloadPrefs() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+  }
+
   static Future<void> saveVehicles(List<VehicleData> vehicles) async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String encodedData = json.encode(
       vehicles.map((vehicle) => vehicle.toJson()).toList(),
     );
@@ -17,8 +21,7 @@ class VehicleStorage {
   }
 
   static Future<List<VehicleData>> getVehicles() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? encodedData = prefs.getString(_key);
 
     if (encodedData == null) return [];
@@ -50,8 +53,7 @@ class VehicleStorage {
   }
 
   static Future<void> clearVehicles() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
   }
 }

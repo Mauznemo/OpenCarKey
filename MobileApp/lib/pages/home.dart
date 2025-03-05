@@ -1,12 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
-import '../services/ble_service.dart';
+import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
+import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import '../utils/utils.dart';
 
@@ -17,7 +16,8 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+class _HomePageState extends State<HomePage> {
+  final FlutterBackgroundService service = FlutterBackgroundService();
   List<Vehicle> vehicles = [];
 
   late String eventData = '--';
@@ -30,32 +30,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     setState(() {
       vehicles = vehiclesData
           .map((vehicle) => Vehicle(
-                device: BluetoothDevice.fromId(vehicle.macAddress),
+                device: BleDevice(macAddress: vehicle.macAddress),
                 data: vehicle,
               ))
           .toList();
     });
 
-    connectDevices();
+    getConnectedDevices();
+
+    //TODO: Tell BG service to connect to devices
+    //connectDevices();
   }
 
-  void connectDevices() async {
+  /*void connectDevices() async {
     for (final vehicle in vehicles) {
       await BleService.connectToDevice(vehicle.device);
     }
-  }
+  }*/
 
   void getConnectedDevices() async {
-    final connectedDevices = await BleService.getConnectedDevices();
+    final connectedDevices = await BleBackgroundService.getConnectedDevices();
 
     for (final vehicle in vehicles) {
       final connectedDevice = connectedDevices.firstWhere(
-        (device) => device.remoteId == vehicle.device.remoteId,
+        (device) => device.macAddress == vehicle.device.macAddress,
         orElse: () => vehicle.device,
       );
 
       vehicle.device = connectedDevice;
-      vehicle.device.connect();
+      print(
+          'Checking connected device: ${vehicle.device.macAddress}: Connected: ${vehicle.device.isConnected}, RSSI: ${vehicle.device.rssi}');
+      //vehicle.device.connect();
     }
 
     setState(() {});
@@ -79,9 +84,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       child: const Text('OK'))
                 ],
               ));
+      setState(() {});
     } else if (message.startsWith('AUTH_OK')) {
       if (notAuthenticatedDevices.contains(macAddress)) {
         notAuthenticatedDevices.remove(macAddress);
+        setState(() {});
       }
     } else if (message.startsWith('ld')) {
       setState(() => vehicles
@@ -105,53 +112,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    getVehicles();
-
-    FlutterBluePlus.events.onConnectionStateChanged.listen((event) async {
-      Vehicle changedVehicle = vehicles.firstWhere(
-          (vehicle) => vehicle.device.remoteId == event.device.remoteId);
-
-      changedVehicle.device = event.device;
-
-      if (event.connectionState == BluetoothConnectionState.connected)
-        await BleService.sendMessage(
-            changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
-      await BleService.sendMessage(changedVehicle.device, 'ds');
-
-      setState(() =>
-          vehicles.firstWhere(
-              (vehicle) => vehicle.device.remoteId == event.device.remoteId) ==
-          changedVehicle);
-    });
-
-    FlutterBluePlus.events.onCharacteristicReceived.listen((event) {
-      eventData = 'Characteristic received: ${utf8.decode(event.value)}';
-      print('Characteristic received: ${utf8.decode(event.value)}');
-
-      processMessage(
-          event.device.remoteId.toString(), utf8.decode(event.value));
-
-      setState(() {});
-    });
-  }
-
-  /*@override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Handle app state changes
-    if (state == AppLifecycleState.resumed) {
-      // App in foreground - start active scanning
-      BleService.scanForDevices();
-    } else if (state == AppLifecycleState.paused) {
-      // App in background - handle according to platform
-      if (Platform.isAndroid) {
-        // For Android, scanning should continue through the background service
-        scanSubscription?.cancel();
-      } else if (Platform.isIOS) {
-        // For iOS, we continue scanning but at a less frequent interval
-        // The system will handle waking the app when devices are found
+    service.on('message_received').listen((event) {
+      if (event != null) {
+        processMessage(event['macAddress'], event['message']);
       }
-    }
-  }*/
+    });
+    service.on('connection_state_changed').listen((event) {
+      if (event != null) {
+        getConnectedDevices();
+      }
+    });
+    getVehicles();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +134,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () {
-                getVehicles();
+                //getVehicles();
+                getConnectedDevices();
                 setState(() {});
               },
             ),
@@ -225,7 +198,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 ),
                                 Spacer(),
                                 if (notAuthenticatedDevices.contains(
-                                    vehicle.device.remoteId.toString()))
+                                    vehicle.device.macAddress.toString()))
                                   Icon(
                                     Icons.pin,
                                     color: Colors.amber,
@@ -236,7 +209,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               padding:
                                   const EdgeInsets.only(left: 8.0, bottom: 4.0),
                               child: Text(
-                                  'Mac Address: ${vehicle.data.macAddress}, Association ID: ${null}',
+                                  'Mac Address: ${vehicle.data.macAddress}',
                                   style: const TextStyle(fontSize: 10)),
                             ),
                             Row(
@@ -247,8 +220,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                       ? Icons.lock_outline
                                       : Icons.lock_open_outlined),
                                   onPressed: vehicle.device.isConnected
-                                      ? () async {
-                                          await BleService.sendMessage(
+                                      ? () {
+                                          BleBackgroundService.sendMessage(
                                             vehicle.device,
                                             vehicle.doorsLocked ? 'ud' : 'ld',
                                           );
@@ -259,8 +232,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     ? IconButton(
                                         icon: const Icon(Icons.directions_car),
                                         onPressed: vehicle.device.isConnected
-                                            ? () async {
-                                                await BleService.sendMessage(
+                                            ? () {
+                                                BleBackgroundService
+                                                    .sendMessage(
                                                   vehicle.device,
                                                   'ut',
                                                 );
@@ -306,22 +280,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               ),
                             );
                             if (!(await confirmed)) return;
+                            print('Deleting vehicle: ${vehicle.data.name}');
 
                             VehicleStorage.removeVehicle(
                                 vehicle.data.macAddress);
 
                             setState(() => vehicles.removeAt(index));
 
-                            if (vehicle.device.isConnected)
-                              await BleService.disconnectDevice(vehicle.device);
+                            BleBackgroundService.reloadVehicles();
 
-                            // print(
-                            //     "Removing Association ID: ${vehicleEntry.vehicleData.associationId}");
-                            // await BleService.disassociateBle(
-                            //     vehicleEntry.vehicleData.associationId,
-                            //     vehicleEntry.vehicleData.macAddress);
+                            BleBackgroundService.disconnectDevice(
+                                vehicle.device);
 
-                            getVehicles();
+                            //getVehicles();
                           },
                         ),
                       );

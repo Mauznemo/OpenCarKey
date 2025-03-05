@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import '../services/ble_background_service.dart';
 import '../services/ble_service.dart';
 
 class ScanDialog extends StatefulWidget {
@@ -66,20 +67,13 @@ class _ScanDialogState extends State<ScanDialog> {
                           subtitle: Text(devices[index]['id']),
                           trailing: Text('${devices[index]['rssi']} dBm'),
                           onTap: () async {
-                            final device = await BleService.connectToDevice(
-                                devices[index]['device']);
+                            final device =
+                                await BleBackgroundService.connectToDevice(
+                                    devices[index]['device']);
 
                             if (!context.mounted) return;
 
-                            if (device != null) {
-                              Navigator.of(context).pop(device);
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Failed to connect to device'),
-                                ),
-                              );
-                            }
+                            Navigator.of(context).pop(device);
                           },
                         );
                       },
