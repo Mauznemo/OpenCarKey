@@ -42,14 +42,11 @@ class _HomePageState extends State<HomePage> {
     //connectDevices();
   }
 
-  /*void connectDevices() async {
-    for (final vehicle in vehicles) {
-      await BleService.connectToDevice(vehicle.device);
-    }
-  }*/
-
   void getConnectedDevices() async {
     final connectedDevices = await BleBackgroundService.getConnectedDevices();
+    for (final device in connectedDevices) {
+      print('Connected device: ${device.macAddress}');
+    }
 
     for (final vehicle in vehicles) {
       final connectedDevice = connectedDevices.firstWhere(
@@ -59,8 +56,7 @@ class _HomePageState extends State<HomePage> {
 
       vehicle.device = connectedDevice;
       print(
-          'Checking connected device: ${vehicle.device.macAddress}: Connected: ${vehicle.device.isConnected}, RSSI: ${vehicle.device.rssi}');
-      //vehicle.device.connect();
+          'Checking connected device: ${vehicle.device.macAddress}: Connected: ${vehicle.device.isConnected}');
     }
 
     setState(() {});

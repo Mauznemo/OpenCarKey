@@ -132,16 +132,16 @@ class BleBackgroundService {
     FlutterBluePlus.events.onConnectionStateChanged.listen((event) async {
       print('Connection state changed: ${event.connectionState}');
 
-      if (vehicles.isEmpty) {
+      BackgroundVehicle? changedVehicle =
+          _getChangedVehicle(event.device.remoteId.str);
+
+      if (vehicles.isEmpty || changedVehicle == null) {
         await VehicleStorage.reloadPrefs();
         await _getVehicles();
+        changedVehicle = _getChangedVehicle(event.device.remoteId.str);
       }
 
-      if (vehicles.isEmpty) return;
-
-      BackgroundVehicle changedVehicle = vehicles.firstWhere(
-          (backgroundVehicle) =>
-              backgroundVehicle.device.remoteId == event.device.remoteId);
+      if (vehicles.isEmpty || changedVehicle == null) return;
 
       changedVehicle.device = event.device;
 
@@ -156,32 +156,24 @@ class BleBackgroundService {
             changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
         await BleService.sendMessage(changedVehicle.device, 'ds');
 
-        int rssi = await changedVehicle.device.readRssi();
-        List<BleDevice> connectedDevicesMacs = [];
-        for (var vehicle in vehicles) {
-          if (vehicle.device.isConnected) {
-            connectedDevicesMacs.add(BleDevice(
-                macAddress: vehicle.device.remoteId.str,
-                isConnected: true,
-                rssi: rssi));
-          }
-        }
-        await BleDeviceStorage.saveBleDevices(connectedDevicesMacs);
-
-        service.invoke(
-          'connection_state_changed',
-          {
-            'macAddress': event.device.remoteId.toString(),
-            'connectionState': event.connectionState.toString(),
-          },
-        );
+        await BleDeviceStorage.addDevice(changedVehicle.device.remoteId.str);
       } else if (event.connectionState ==
           BluetoothConnectionState.disconnected) {
         _updateNotification(
             flutterLocalNotificationsPlugin,
             'Disconnected from ${changedVehicle.data.name}',
             '${changedVehicle.data.name} is disconnected. Waiting for connection');
+
+        await BleDeviceStorage.removeDevice(changedVehicle.device.remoteId.str);
       }
+
+      service.invoke(
+        'connection_state_changed',
+        {
+          'macAddress': event.device.remoteId.toString(),
+          'connectionState': event.connectionState.toString(),
+        },
+      );
     });
 
     FlutterBluePlus.events.onCharacteristicReceived.listen((event) {
@@ -194,7 +186,6 @@ class BleBackgroundService {
           'message': utf8.decode(event.value),
         },
       );
-      //processMessage(event.device.remoteId.toString(), utf8.decode(event.value));
     });
 
     _getVehicles();
@@ -227,6 +218,17 @@ class BleBackgroundService {
     DartPluginRegistrant.ensureInitialized();
 
     return true;
+  }
+
+  static BackgroundVehicle? _getChangedVehicle(String macAddress) {
+    BackgroundVehicle? changedVehicle;
+    try {
+      changedVehicle = vehicles.firstWhere((backgroundVehicle) =>
+          backgroundVehicle.device.remoteId.str == macAddress);
+    } catch (e) {
+      changedVehicle = null;
+    }
+    return changedVehicle;
   }
 
   static Future<void> _getVehicles() async {

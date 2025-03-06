@@ -65,6 +65,8 @@ class MyCallbacks : public BLECharacteristicCallbacks
             String command = String(value.c_str());
             command.trim();
 
+            Serial.println("Received command: " + command);
+
             // Handle authentication
             if (command.startsWith("AUTH:"))
             {
