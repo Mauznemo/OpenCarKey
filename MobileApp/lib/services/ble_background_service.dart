@@ -88,9 +88,17 @@ class BleBackgroundService {
 
     print('Background service started...');
 
+    await BleDeviceStorage.clearBleDevices();
+
     service.on('reload_vehicles').listen((event) async {
       await VehicleStorage.reloadPrefs();
       _getVehicles();
+    });
+
+    service.on('try_connect_all').listen((event) async {
+      for (final vehicle in vehicles) {
+        await BleService.connectToDevice(vehicle.device);
+      }
     });
 
     service.on('send_message').listen((event) {
@@ -170,7 +178,7 @@ class BleBackgroundService {
       service.invoke(
         'connection_state_changed',
         {
-          'macAddress': event.device.remoteId.toString(),
+          'macAddress': event.device.remoteId.str,
           'connectionState': event.connectionState.toString(),
         },
       );
@@ -308,6 +316,10 @@ class BleBackgroundService {
 
   static void reloadVehicles() {
     _service.invoke('reload_vehicles', {});
+  }
+
+  static void tryConnectAll() {
+    _service.invoke('try_connect_all', {});
   }
 
   static void disconnectDevice(BleDevice device) {

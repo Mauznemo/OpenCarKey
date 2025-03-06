@@ -38,15 +38,14 @@ class _HomePageState extends State<HomePage> {
 
     getConnectedDevices();
 
-    //TODO: Tell BG service to connect to devices
-    //connectDevices();
+    BleBackgroundService.tryConnectAll();
   }
 
   void getConnectedDevices() async {
+    await VehicleStorage.reloadPrefs();
     final connectedDevices = await BleBackgroundService.getConnectedDevices();
-    for (final device in connectedDevices) {
-      print('Connected device: ${device.macAddress}');
-    }
+    List<String> connectedDeviceMacs =
+        connectedDevices.map((e) => e.macAddress).toList();
 
     for (final vehicle in vehicles) {
       final connectedDevice = connectedDevices.firstWhere(
@@ -55,6 +54,8 @@ class _HomePageState extends State<HomePage> {
       );
 
       vehicle.device = connectedDevice;
+      vehicle.device.isConnected =
+          connectedDeviceMacs.contains(vehicle.device.macAddress);
       print(
           'Checking connected device: ${vehicle.device.macAddress}: Connected: ${vehicle.device.isConnected}');
     }
@@ -131,6 +132,7 @@ class _HomePageState extends State<HomePage> {
               icon: const Icon(Icons.refresh),
               onPressed: () {
                 //getVehicles();
+                BleBackgroundService.tryConnectAll();
                 getConnectedDevices();
                 setState(() {});
               },
