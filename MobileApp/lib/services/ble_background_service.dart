@@ -6,15 +6,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibration/vibration.dart';
 
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import 'ble_service.dart';
 import 'vehicle_service.dart';
 
+@pragma('vm:entry-point')
 class BleBackgroundService {
   static List<BackgroundVehicle> vehicles = [];
   static final FlutterBackgroundService _service = FlutterBackgroundService();
+  static late SharedPreferences _prefs;
+  static bool _proximityKeyEnabled = false;
+  static double _proximityRange = 100;
+  static bool _vibrate = true;
+
   // This should be in your main.dart before runApp
   static Future<void> initializeService() async {
     final service = FlutterBackgroundService();
@@ -90,6 +98,35 @@ class BleBackgroundService {
 
     await BleDeviceStorage.clearBleDevices();
 
+    _prefs = await SharedPreferences.getInstance();
+    _proximityKeyEnabled = _prefs.getBool('proximityKey') ?? false;
+    _proximityRange = _prefs.getDouble('triggerRange') ?? 50;
+    _vibrate = _prefs.getBool('vibrate') ?? true;
+
+    service.on('set_proximity_key').listen((event) async {
+      if (event == null) return;
+      bool enabled = event['enabled'];
+      _proximityKeyEnabled = enabled;
+
+      String message = enabled ? 'al' : 'ald';
+      for (final vehicle in vehicles) {
+        await BleService.sendMessage(vehicle.device, message);
+      }
+    });
+
+    service.on('set_vibrate').listen((event) {
+      if (event == null) return;
+      bool enabled = event['enabled'];
+      _vibrate = enabled;
+    });
+
+    service.on('set_proximity_range').listen((event) {
+      if (event == null) return;
+      double range = event['range'];
+      _proximityRange = range;
+      //TODO: Do calculation for rssi
+    });
+
     service.on('reload_vehicles').listen((event) async {
       await VehicleStorage.reloadPrefs();
       _getVehicles();
@@ -164,6 +201,14 @@ class BleBackgroundService {
             changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
         await BleService.sendMessage(changedVehicle.device, 'ds');
 
+        if (_proximityKeyEnabled) {
+          //TODO: Calculate distance and wait until in range
+          await BleService.sendMessage(changedVehicle.device, 'al');
+          if (_vibrate) {
+            _vibrateLongTwice();
+          }
+        }
+
         await BleDeviceStorage.addDevice(changedVehicle.device.remoteId.str);
       } else if (event.connectionState ==
           BluetoothConnectionState.disconnected) {
@@ -171,6 +216,11 @@ class BleBackgroundService {
             flutterLocalNotificationsPlugin,
             'Disconnected from ${changedVehicle.data.name}',
             '${changedVehicle.data.name} is disconnected. Waiting for connection');
+
+        //TODO: Check range while connected and do if out of set range
+        if (_proximityKeyEnabled && _vibrate) {
+          _vibrateLongTwice();
+        }
 
         await BleDeviceStorage.removeDevice(changedVehicle.device.remoteId.str);
       }
@@ -277,6 +327,12 @@ class BleBackgroundService {
     );
   }
 
+  static void _vibrateLongTwice() async {
+    if (await Vibration.hasVibrator() ?? false) {
+      Vibration.vibrate(pattern: [0, 600, 200, 600]);
+    }
+  }
+
   //Functions to call from app/foreground
   static Future<List<BleDevice>> getConnectedDevices() async {
     return await BleDeviceStorage.loadBleDevices();
@@ -312,6 +368,18 @@ class BleBackgroundService {
     });
 
     return completer.future;
+  }
+
+  static void setVibrate(bool enabled) {
+    _service.invoke('set_vibrate', {'enabled': enabled});
+  }
+
+  static void setProximityKey(bool enabled) {
+    _service.invoke('set_proximity_key', {'enabled': enabled});
+  }
+
+  static void setProximityRange(double range) {
+    _service.invoke('set_proximity_range', {'range': range});
   }
 
   static void reloadVehicles() {
