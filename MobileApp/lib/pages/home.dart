@@ -137,6 +137,11 @@ class _HomePageState extends State<HomePage> {
                 setState(() {});
               },
             ),
+            IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/settings');
+                }),
           ],
         ),
         floatingActionButton: FloatingActionButton(
