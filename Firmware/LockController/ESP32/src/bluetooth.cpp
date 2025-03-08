@@ -4,13 +4,17 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include "bluetooth.h"
+#include "esp_gap_ble_api.h"
 
 // BLE service and characteristic UUIDs
 #define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
+#define RSSI_SAMPLES 5 // Number of samples for smoothing
+
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
+esp_bd_addr_t peerAddress;
 
 void (*onConnected)() = nullptr;
 void (*onDisconnected)() = nullptr;
@@ -26,11 +30,86 @@ bool autoLocking = false;
 
 bool oldDeviceConnected = false;
 
+float triggerRssiStrength = 0;
+float releaseRssiStrength = 0;
+float lastRssiStrength = 0;
+int rssiDeadZone = 4;
+int rssiBuffer[RSSI_SAMPLES] = {0};
+int rssiIndex = 0;
+bool bufferFilled = false;
+unsigned long previousRssiMillis = 0;
+const long rssiInterval = 500;
+bool sendRssi = false;
+
+namespace
+{
+    void lock(bool proximity = false)
+    {
+        if (deviceConnected)
+        {
+            pCharacteristic->setValue(proximity ? "LOCKED_PROX" : "LOCKED");
+            pCharacteristic->notify();
+        }
+
+        isLocked = true;
+
+        if (onLocked)
+            onLocked();
+
+        Serial.println("Locked (proximity:" + String(proximity) + ")");
+    }
+
+    void unlock(bool proximity = false)
+    {
+        if (deviceConnected)
+        {
+            pCharacteristic->setValue(proximity ? "UNLOCKED_PROX" : "UNLOCKED");
+            pCharacteristic->notify();
+        }
+
+        isLocked = false;
+
+        if (onUnlocked)
+            onUnlocked();
+
+        Serial.println("Unlocked (proximity:" + String(proximity) + ")");
+    }
+
+    void openTrunk()
+    {
+        if (onTrunkOpend)
+            onTrunkOpend();
+    }
+
+    void startEngine()
+    {
+        if (onEngineStarted)
+            onEngineStarted();
+    }
+
+    void enableProxKey()
+    {
+        autoLocking = true;
+    }
+
+    void disableProxKey()
+    {
+        autoLocking = false;
+    }
+
+    float calculateReleaseRssi(int triggerRssiStrength, float pathLossExponent = 3.0, float reduction = 5.0)
+    {
+        float deltaRssi = -10 * pathLossExponent * log10((reduction + 1) / 1);
+        return triggerRssiStrength + deltaRssi;
+    }
+}
+
 class MyServerCallbacks : public BLEServerCallbacks
 {
-    void onConnect(BLEServer *pServer)
+    void onConnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param)
     {
         Serial.println("Connected");
+        memcpy(peerAddress, param->connect.remote_bda, sizeof(esp_bd_addr_t));
         deviceConnected = true;
         isAuthenticated = false; // Reset authentication on new connection
 
@@ -43,10 +122,9 @@ class MyServerCallbacks : public BLEServerCallbacks
         Serial.println("Disconnected");
         deviceConnected = false;
         isAuthenticated = false; // Reset authentication on disconnect
-        if (autoLocking)
+        if (autoLocking && !isLocked)
         {
-            if (onLocked)
-                onLocked();
+            lock(true);
         }
         autoLocking = false;
 
@@ -95,61 +173,103 @@ class MyCallbacks : public BLECharacteristicCallbacks
             }
 
             // Process authenticated commands
-            if (command == "ds")
+            if (command == "SEND_DATA")
             {
-                pCharacteristic->setValue(isLocked ? "ld" : "ud");
+                pCharacteristic->setValue(isLocked ? "LOCKED" : "UNLOCKED");
                 pCharacteristic->notify();
             }
-            else if (command == "ld")
+            else if (command == "LOCK")
             {
-                pCharacteristic->setValue("ld");
-                pCharacteristic->notify();
-
-                isLocked = true;
-
-                if (onLocked)
-                    onLocked();
+                lock();
             }
-            else if (command == "ud")
+            else if (command == "UNLOCK")
             {
-                pCharacteristic->setValue("ud");
-                pCharacteristic->notify();
-
-                isLocked = false;
-
-                if (onUnlocked)
-                    onUnlocked();
+                unlock();
             }
-            else if (command == "ut")
+            else if (command == "OPEN_TRUNK")
             {
-                if (onTrunkOpend)
-                    onTrunkOpend();
+                openTrunk();
             }
-            else if (command == "st")
+            else if (command == "START_ENGINE")
             {
-                if (onEngineStarted)
-                    onEngineStarted();
+                startEngine();
             }
-            else if (command == "al")
+            else if (command == "PROX_KEY_ON")
             {
-                autoLocking = true;
-
-                pCharacteristic->setValue("ud");
-                pCharacteristic->notify();
-
-                if (isLocked)
-                {
-                    if (onUnlocked)
-                        onUnlocked();
-                }
+                enableProxKey();
             }
-            else if (command == "ald")
+            else if (command == "PROX_KEY_OFF")
             {
-                autoLocking = false;
+                disableProxKey();
+            }
+            else if (command.startsWith("RSSI_TRIG:"))
+            {
+                String data = command.substring(10);
+                int index = data.indexOf(',');
+                triggerRssiStrength = data.substring(0, index).toFloat();
+                rssiDeadZone = data.substring(index + 1).toInt();
+                triggerRssiStrength = command.substring(10).toFloat();
+                releaseRssiStrength = calculateReleaseRssi(triggerRssiStrength);
+                Serial.println("Trigger RSSI set: " + String(triggerRssiStrength));
+                Serial.println("Release RSSI set: " + String(releaseRssiStrength));
+            }
+            else if (command == "RSSI")
+            {
+                sendRssi = true;
             }
         }
     }
 };
+
+// Callback function to handle RSSI readings
+void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+{
+    if (event == ESP_GAP_BLE_READ_RSSI_COMPLETE_EVT)
+    {
+        int rawRSSI = param->read_rssi_cmpl.rssi;
+
+        rssiBuffer[rssiIndex] = rawRSSI;
+        rssiIndex = (rssiIndex + 1) % RSSI_SAMPLES;
+
+        if (rssiIndex == 0)
+            bufferFilled = true;
+
+        int sum = 0;
+        int count = bufferFilled ? RSSI_SAMPLES : rssiIndex;
+        for (int i = 0; i < count; i++)
+        {
+            sum += rssiBuffer[i];
+        }
+        float avgRSSI = (float)sum / count;
+
+        if (sendRssi)
+        {
+            pCharacteristic->setValue(("RSSI:" + String(avgRSSI)).c_str());
+            pCharacteristic->notify();
+            sendRssi = false;
+        }
+
+        if (!autoLocking || triggerRssiStrength == 0)
+        {
+            return;
+        }
+
+        if (avgRSSI < releaseRssiStrength)
+        {
+            if (!isLocked)
+            {
+                lock(true);
+            }
+        }
+        else if (avgRSSI > triggerRssiStrength)
+        {
+            if (isLocked)
+            {
+                unlock(true);
+            }
+        }
+    }
+}
 
 void setupBluetooth()
 {
@@ -183,10 +303,30 @@ void setupBluetooth()
     pAdvertising->setMinPreferred(0x06); // Set minimum connection interval to 7.5ms
     pAdvertising->setMaxPreferred(0x10); // Set maximum connection interval to 20ms
     BLEDevice::startAdvertising();
+
+    // Register the GAP callback to receive RSSI results
+    esp_ble_gap_register_callback(gapCallback);
+}
+
+void readRssi()
+{
+    if (deviceConnected && (autoLocking || sendRssi))
+    {
+        unsigned long currentMillis = millis();
+
+        if (currentMillis - previousRssiMillis >= rssiInterval)
+        {
+            previousRssiMillis = currentMillis;
+
+            esp_ble_gap_read_rssi(peerAddress);
+        }
+    }
 }
 
 void bluetoothLoop()
 {
+    readRssi();
+
     if (!deviceConnected && oldDeviceConnected)
     {
         delay(500);                  // Give the bluetooth stack the chance to get things ready
