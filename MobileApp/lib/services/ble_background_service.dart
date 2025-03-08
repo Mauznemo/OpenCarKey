@@ -253,7 +253,7 @@ class BleBackgroundService {
         if (_proximityKeyEnabled) {
           await Future.delayed(Duration(milliseconds: 200));
           await BleService.sendMessage(changedVehicle.device,
-              'RSSI_TRIG:${-40},${4}'); //_proximityStrength.toStringAsFixed(2)
+              'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}'); //
           await Future.delayed(Duration(milliseconds: 200));
           await BleService.sendMessage(changedVehicle.device, 'PROX_KEY_ON');
         }
