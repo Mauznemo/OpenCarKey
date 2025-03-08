@@ -87,12 +87,12 @@ class _HomePageState extends State<HomePage> {
         notAuthenticatedDevices.remove(macAddress);
         setState(() {});
       }
-    } else if (message.startsWith('ld')) {
+    } else if (message.startsWith('LOCKED')) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
           .doorsLocked = true);
-    } else if (message.startsWith('ud')) {
+    } else if (message.startsWith('UNLOCKED')) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
@@ -226,7 +226,9 @@ class _HomePageState extends State<HomePage> {
                                       ? () {
                                           BleBackgroundService.sendMessage(
                                             vehicle.device,
-                                            vehicle.doorsLocked ? 'ud' : 'ld',
+                                            vehicle.doorsLocked
+                                                ? 'UNLOCK'
+                                                : 'LOCK',
                                           );
                                         }
                                       : null,
@@ -239,7 +241,7 @@ class _HomePageState extends State<HomePage> {
                                                 BleBackgroundService
                                                     .sendMessage(
                                                   vehicle.device,
-                                                  'ut',
+                                                  'UNLOCK_TRUNK',
                                                 );
                                               }
                                             : null,

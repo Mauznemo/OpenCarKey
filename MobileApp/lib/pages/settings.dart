@@ -14,14 +14,16 @@ class _SettingsState extends State<SettingsPage> {
   late SharedPreferences prefs;
   bool proximityKey = false;
   bool vibrate = true;
-  double triggerRange = 50;
+  double triggerStrength = -200;
+  double deadZone = 4;
 
   void loadPrefs() async {
     prefs = await SharedPreferences.getInstance();
 
     proximityKey = prefs.getBool('proximityKey') ?? false;
-    triggerRange = prefs.getDouble('triggerRange') ?? 50;
+    triggerStrength = prefs.getDouble('triggerStrength') ?? -200;
     vibrate = prefs.getBool('vibrate') ?? true;
+    deadZone = prefs.getDouble('deadZone') ?? 4;
 
     setState(() {});
   }
@@ -68,52 +70,6 @@ class _SettingsState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 20),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: EdgeInsets.only(left: 8.0),
-                child: Text(
-                  'Trigger Range',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-            ),
-            SliderTheme(
-              data: SliderTheme.of(context)
-                  .copyWith(year2023: false, padding: EdgeInsets.all(8)),
-              child: Slider(
-                  value: triggerRange,
-                  label: '${triggerRange.round().toString()}m',
-                  divisions: 10,
-                  min: 0,
-                  max: 100,
-                  onChanged: (value) {
-                    prefs.setDouble('triggerRange', value);
-                    BleBackgroundService.setProximityRange(value);
-
-                    setState(() {
-                      triggerRange = value;
-                    });
-                  }),
-            ),
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.warning_amber_rounded),
-                      const SizedBox(width: 10),
-                      Text('Range is not calibrated yet'),
-                    ],
-                  ),
-                  FilledButton(
-                      onPressed: () {}, child: const Text('Calibrate Range')),
-                ],
-              ),
-            ),
             Row(
               children: [
                 Switch(
@@ -135,6 +91,88 @@ class _SettingsState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 20),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: EdgeInsets.only(left: 8.0),
+                child: Text(
+                  'Trigger Range',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  triggerStrength == -200
+                      ? Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded),
+                            const SizedBox(width: 10),
+                            Text('Range is not set yet'),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            const Icon(Icons.check_circle_outline),
+                            const SizedBox(width: 10),
+                            Text(
+                                'Range is set to ${triggerStrength.toStringAsFixed(2)} dBm'),
+                          ],
+                        ),
+                  FilledButton(
+                      onPressed: () async {
+                        await Navigator.pushNamed(
+                            context, '/range_calibration');
+                        triggerStrength =
+                            prefs.getDouble('triggerStrength') ?? -200;
+                        setState(() {});
+                      },
+                      child: const Text('Calibrate Range')),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.only(left: 8.0),
+                  child: Text(
+                    'Dead Zone',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
+              Tooltip(
+                  message:
+                      'Range in which nothing will happen. Eg. 5m: After the car was locked you have to get around 5m closer to it to unlock again. This is to prevent rapid locking and unlocking if you are at the exact trigger distance',
+                  triggerMode: TooltipTriggerMode.tap,
+                  showDuration: const Duration(minutes: 2),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Icon(Icons.info_outline),
+                  )),
+            ]),
+            SliderTheme(
+                data: SliderTheme.of(context)
+                    .copyWith(year2023: false, padding: EdgeInsets.all(8)),
+                child: Slider(
+                    value: deadZone,
+                    min: 1,
+                    max: 15,
+                    divisions: 14,
+                    label: '${deadZone.toInt().toString()} m',
+                    onChanged: (value) {
+                      prefs.setDouble('deadZone', value);
+                      BleBackgroundService.setDeadZone(value);
+
+                      setState(() {
+                        deadZone = value;
+                      });
+                    }))
           ]),
         ));
   }

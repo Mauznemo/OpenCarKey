@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
@@ -36,6 +37,8 @@ class BleService {
       await device.connect(autoConnect: true, mtu: null).catchError((e) {
         print('Connection error: $e');
       });
+
+      if (!device.isConnected) return null;
 
       print('Connected to device: ${device.advName}');
 
@@ -90,4 +93,11 @@ class BleService {
       return null;
     }
   }
+}
+
+class MessageData {
+  final String macAddress;
+  final String message;
+
+  MessageData(this.macAddress, this.message);
 }

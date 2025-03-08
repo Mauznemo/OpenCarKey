@@ -17,11 +17,16 @@ import 'vehicle_service.dart';
 @pragma('vm:entry-point')
 class BleBackgroundService {
   static List<BackgroundVehicle> vehicles = [];
+  static List<String> _proxyLocked = [];
+  static final ValueNotifier<MessageData> _onMessageReceived =
+      ValueNotifier<MessageData>(MessageData('', ''));
+  static List<StreamSubscription?> _subscriptions = [];
   static final FlutterBackgroundService _service = FlutterBackgroundService();
   static late SharedPreferences _prefs;
   static bool _proximityKeyEnabled = false;
-  static double _proximityRange = 100;
+  static double _proximityStrength = 100;
   static bool _vibrate = true;
+  static double _deadZone = 4;
 
   // This should be in your main.dart before runApp
   static Future<void> initializeService() async {
@@ -100,7 +105,8 @@ class BleBackgroundService {
 
     _prefs = await SharedPreferences.getInstance();
     _proximityKeyEnabled = _prefs.getBool('proximityKey') ?? false;
-    _proximityRange = _prefs.getDouble('triggerRange') ?? 50;
+    _proximityStrength = _prefs.getDouble('triggerStrength') ?? -200;
+    _deadZone = _prefs.getDouble('deadZone') ?? 4;
     _vibrate = _prefs.getBool('vibrate') ?? true;
 
     service.on('set_proximity_key').listen((event) async {
@@ -108,7 +114,7 @@ class BleBackgroundService {
       bool enabled = event['enabled'];
       _proximityKeyEnabled = enabled;
 
-      String message = enabled ? 'al' : 'ald';
+      String message = enabled ? 'PROX_KEY_ON' : 'PROX_KEY_OFF';
       for (final vehicle in vehicles) {
         await BleService.sendMessage(vehicle.device, message);
       }
@@ -120,11 +126,26 @@ class BleBackgroundService {
       _vibrate = enabled;
     });
 
-    service.on('set_proximity_range').listen((event) {
+    service.on('set_dead_zone').listen((event) async {
       if (event == null) return;
-      double range = event['range'];
-      _proximityRange = range;
-      //TODO: Do calculation for rssi
+      double deadZone = event['deadZone'].toDouble();
+      _deadZone = deadZone;
+      for (final vehicle in vehicles) {
+        if (!vehicle.device.isConnected) continue;
+        await BleService.sendMessage(vehicle.device,
+            'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${deadZone.toInt()}');
+      }
+    });
+
+    service.on('set_proximity_strength').listen((event) async {
+      if (event == null) return;
+      double strength = event['strength'].toDouble();
+      _proximityStrength = strength;
+      for (final vehicle in vehicles) {
+        if (!vehicle.device.isConnected) continue;
+        await BleService.sendMessage(vehicle.device,
+            'RSSI_TRIG:${strength.toStringAsFixed(2)},${_deadZone.toInt()}');
+      }
     });
 
     service.on('reload_vehicles').listen((event) async {
@@ -191,34 +212,71 @@ class BleBackgroundService {
       changedVehicle.device = event.device;
 
       if (event.connectionState == BluetoothConnectionState.connected) {
-        _updateNotification(
-            flutterLocalNotificationsPlugin,
-            'Connected to ${changedVehicle.data.name}',
-            '${changedVehicle.data.name} is connected');
         // Give the connection a moment to stabilize
         await Future.delayed(Duration(milliseconds: 500));
-        await BleService.sendMessage(
-            changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
-        await BleService.sendMessage(changedVehicle.device, 'ds');
+
+        //Sub to notifications from the device
+        final services = await event.device.discoverServices();
+        final service = services.firstWhere((service) =>
+            service.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'));
+        final characteristic = service.characteristics.firstWhere(
+            (characteristic) =>
+                characteristic.uuid ==
+                Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
+
+        await characteristic.setNotifyValue(true);
+        StreamSubscription? notificationSubscription =
+            characteristic.onValueReceived.listen((value) {
+          _onMessageReceived.value =
+              MessageData(event.device.remoteId.str, utf8.decode(value));
+        });
+
+        _subscriptions
+            .add(notificationSubscription); //TODO: remove if no longer needed
 
         if (_proximityKeyEnabled) {
-          //TODO: Calculate distance and wait until in range
-          await BleService.sendMessage(changedVehicle.device, 'al');
-          if (_vibrate) {
-            _vibrateLongTwice();
-          }
+          _updateNotification(
+              flutterLocalNotificationsPlugin,
+              'Connected to ${changedVehicle.data.name}',
+              '${changedVehicle.data.name} connected. Go closer to unlock!');
+        } else {
+          _updateNotification(
+              flutterLocalNotificationsPlugin,
+              'Connected to ${changedVehicle.data.name}',
+              '${changedVehicle.data.name} connected.');
+        }
+        await BleService.sendMessage(
+            changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
+        await Future.delayed(Duration(milliseconds: 200));
+        await BleService.sendMessage(changedVehicle.device, 'SEND_DATA');
+
+        if (_proximityKeyEnabled) {
+          await Future.delayed(Duration(milliseconds: 200));
+          await BleService.sendMessage(changedVehicle.device,
+              'RSSI_TRIG:${-40},${4}'); //_proximityStrength.toStringAsFixed(2)
+          await Future.delayed(Duration(milliseconds: 200));
+          await BleService.sendMessage(changedVehicle.device, 'PROX_KEY_ON');
         }
 
         await BleDeviceStorage.addDevice(changedVehicle.device.remoteId.str);
       } else if (event.connectionState ==
           BluetoothConnectionState.disconnected) {
-        _updateNotification(
-            flutterLocalNotificationsPlugin,
-            'Disconnected from ${changedVehicle.data.name}',
-            '${changedVehicle.data.name} is disconnected. Waiting for connection');
+        if (_proximityKeyEnabled) {
+          _updateNotification(
+              flutterLocalNotificationsPlugin,
+              'Disconnected from ${changedVehicle.data.name} (Proxy Locked)',
+              '${changedVehicle.data.name} disconnected and was locked. Waiting for connection...');
+        } else {
+          _updateNotification(
+              flutterLocalNotificationsPlugin,
+              'Disconnected from ${changedVehicle.data.name}',
+              '${changedVehicle.data.name} is disconnected. Waiting for connection...');
+        }
 
-        //TODO: Check range while connected and do if out of set range
-        if (_proximityKeyEnabled && _vibrate) {
+        //The device was disconnected without having time to say it locked, so let the user know it was locked here
+        if (_proximityKeyEnabled &&
+            _vibrate &&
+            !_proxyLocked.contains(event.device.remoteId.str)) {
           _vibrateLongTwice();
         }
 
@@ -234,39 +292,48 @@ class BleBackgroundService {
       );
     });
 
-    FlutterBluePlus.events.onCharacteristicReceived.listen((event) {
-      print('Characteristic received: ${utf8.decode(event.value)}');
+    _onMessageReceived.addListener(() {
+      final messageData = _onMessageReceived.value;
+      print('Message received: ${messageData.message}');
+
+      if (messageData.message.startsWith('LOCKED_PROX')) {
+        BackgroundVehicle? changedVehicle =
+            _getChangedVehicle(messageData.macAddress);
+
+        _proxyLocked.add(messageData.macAddress);
+        if (_vibrate) {
+          _vibrateLongTwice();
+        }
+
+        _updateNotification(
+            flutterLocalNotificationsPlugin,
+            'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Locked)',
+            '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and locked since it is too far away.');
+      } else if (messageData.message.startsWith('UNLOCKED_PROX')) {
+        BackgroundVehicle? changedVehicle =
+            _getChangedVehicle(messageData.macAddress);
+
+        _proxyLocked.remove(messageData.macAddress);
+        if (_vibrate) {
+          _vibrateLongTwice();
+        }
+
+        _updateNotification(
+            flutterLocalNotificationsPlugin,
+            'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Unlocked)',
+            '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and was unlocked.');
+      }
 
       service.invoke(
         'message_received',
         {
-          'macAddress': event.device.remoteId.toString(),
-          'message': utf8.decode(event.value),
+          'macAddress': messageData.macAddress,
+          'message': messageData.message,
         },
       );
     });
 
     _getVehicles();
-
-    // Periodic task
-    /*Timer.periodic(const Duration(hours: 1), (timer) async {
-      if (service is AndroidServiceInstance) {
-        if (await service.isForegroundService()) {
-          // Perform your background task here
-          print('Background service running...');
-
-
-
-          // Optional: Send data back to the main isolate
-          service.invoke('update', {
-            'current_date': DateTime.now().toIso8601String(),
-          });
-        }
-      } else {
-        // iOS-specific background task
-        print('iOS background service running...');
-      }
-    });*/
   }
 
   // iOS background handler
@@ -374,12 +441,16 @@ class BleBackgroundService {
     _service.invoke('set_vibrate', {'enabled': enabled});
   }
 
+  static void setDeadZone(double deadZone) {
+    _service.invoke('set_dead_zone', {'deadZone': deadZone});
+  }
+
   static void setProximityKey(bool enabled) {
     _service.invoke('set_proximity_key', {'enabled': enabled});
   }
 
-  static void setProximityRange(double range) {
-    _service.invoke('set_proximity_range', {'range': range});
+  static void setProximityStrength(double strength) {
+    _service.invoke('set_proximity_strength', {'strength': strength});
   }
 
   static void reloadVehicles() {

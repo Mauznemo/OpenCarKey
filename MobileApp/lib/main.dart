@@ -2,6 +2,7 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 
 import 'pages/home.dart';
+import 'pages/range_calibration.dart';
 import 'pages/settings.dart';
 import 'utils/utils.dart';
 
@@ -29,6 +30,7 @@ Future<void> main() async {
           routes: {
             '/': (context) => const HomePage(),
             '/settings': (context) => const SettingsPage(),
+            '/range_calibration': (context) => const RangeCalibrationPage(),
           },
         );
       },
