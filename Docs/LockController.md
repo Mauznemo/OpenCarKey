@@ -1,27 +1,27 @@
 # Lock Controller
 ### Sections
-**[Config](#config)**
-**[Custom code for locking, unlocking etc.](#custom-code-for-locking-unlocking-etc)**
-&emsp;[Locking](#locking)
-&emsp;[Unlocking](#unlocking)
-&emsp;[Opening Trunk](#opening-trunk)
-&emsp;[Staring Engine](#starting-engine)
-**[Other Events](#other-events)**
-&emsp;[OnConnected & OnDisconnected](#onconnected--ondisconnected)
-**[bluetooth.h](#bluetoothh)**
-&emsp;[onConnected](#onconnected)
-&emsp;[onDisconnected](#ondisconnected)
-&emsp;[onLocked](#onlocked)
-&emsp;[onUnlocked](#onunlocked)
-&emsp;[onTrunkOpened](#ontrunkopened)
-&emsp;[onEngineStarted](#onenginestarted)
-&emsp;[deviceConnected](#deviceconnected)
-&emsp;[isAuthenticated](#isauthenticated)
-&emsp;[autoLocking](#autolocking)
-&emsp;[isLocked](#islocked)
-&emsp;[setupBluetooth](#setupbluetooth)
-&emsp;[bluetoothLoop](#bluetoothloop)
-**[Ble communication protocol](#ble-communication-protocol)**
+**[Config](#config)**<br>
+**[Custom code for locking, unlocking etc.](#custom-code-for-locking-unlocking-etc)**<br>
+&emsp;[Locking](#locking)<br>
+&emsp;[Unlocking](#unlocking)<br>
+&emsp;[Opening Trunk](#opening-trunk)<br>
+&emsp;[Staring Engine](#starting-engine)<br>
+**[Other Events](#other-events)**<br>
+&emsp;[OnConnected & OnDisconnected](#onconnected--ondisconnected)<br>
+**[bluetooth.h](#bluetoothh)**<br>
+&emsp;[onConnected](#onconnected)<br>
+&emsp;[onDisconnected](#ondisconnected)<br>
+&emsp;[onLocked](#onlocked)<br>
+&emsp;[onUnlocked](#onunlocked)<br>
+&emsp;[onTrunkOpened](#ontrunkopened)<br>
+&emsp;[onEngineStarted](#onenginestarted)<br>
+&emsp;[deviceConnected](#deviceconnected)<br>
+&emsp;[isAuthenticated](#isauthenticated)<br>
+&emsp;[autoLocking](#autolocking)<br>
+&emsp;[isLocked](#islocked)<br>
+&emsp;[setupBluetooth](#setupbluetooth)<br>
+&emsp;[bluetoothLoop](#bluetoothloop)<br>
+**[Ble communication protocol](#ble-communication-protocol)**<br>
 
 ## Config
 Open `platformio.ini`. There you can set your password (`LOCK_PIN`) and BLE device name (`DEVICE_NAME`).
