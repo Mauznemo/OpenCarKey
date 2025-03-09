@@ -7,7 +7,6 @@ import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
-import '../utils/utils.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -60,6 +59,8 @@ class _HomePageState extends State<HomePage> {
           'Checking connected device: ${vehicle.device.macAddress}: Connected: ${vehicle.device.isConnected}');
     }
 
+    BleBackgroundService.requestData();
+
     setState(() {});
   }
 
@@ -97,12 +98,6 @@ class _HomePageState extends State<HomePage> {
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
           .doorsLocked = false);
-    } else if (message.startsWith('ut')) {
-      scaffoldMessengerKey.currentState?.showSnackBar(
-        const SnackBar(
-          content: Text('Trunk unlocked'),
-        ),
-      );
     }
   }
 

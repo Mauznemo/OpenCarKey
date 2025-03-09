@@ -126,6 +126,13 @@ class BleBackgroundService {
       _vibrate = enabled;
     });
 
+    service.on('send_data').listen((event) async {
+      for (final vehicle in vehicles) {
+        if (!vehicle.device.isConnected) continue;
+        await BleService.sendMessage(vehicle.device, 'SEND_DATA');
+      }
+    });
+
     service.on('set_dead_zone').listen((event) async {
       if (event == null) return;
       double deadZone = event['deadZone'].toDouble();
@@ -435,6 +442,10 @@ class BleBackgroundService {
     });
 
     return completer.future;
+  }
+
+  static void requestData() {
+    _service.invoke('send_data', {});
   }
 
   static void setVibrate(bool enabled) {
