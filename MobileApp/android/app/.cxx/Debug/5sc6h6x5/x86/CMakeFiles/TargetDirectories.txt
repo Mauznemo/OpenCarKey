@@ -1,0 +1,2 @@
+D:/Projects/SmartifyOS/OpenCarKey/MobileApp/android/app/.cxx/Debug/5sc6h6x5/x86/CMakeFiles/edit_cache.dir
+D:/Projects/SmartifyOS/OpenCarKey/MobileApp/android/app/.cxx/Debug/5sc6h6x5/x86/CMakeFiles/rebuild_cache.dir

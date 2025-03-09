@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:native_shared_preferences/native_shared_preferences.dart';
-import 'package:open_car_key_app/services/ble_event_listener.dart';
-import 'package:open_car_key_app/services/ble_service.dart';
-import 'package:open_car_key_app/services/vehicle.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
+import '../services/ble_background_service.dart';
+import '../services/vehicle_service.dart';
+import '../types/ble_device.dart';
+import '../types/vehicle.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -16,257 +16,291 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  Future<NativeSharedPreferences> _prefs =
-      NativeSharedPreferences.getInstance();
+  final FlutterBackgroundService service = FlutterBackgroundService();
+  List<Vehicle> vehicles = [];
 
-  List<VehicleEntry> _vehicleEntries = [];
+  late String eventData = '--';
 
-  late String _event = "--";
+  final List<String> notAuthenticatedDevices = [];
 
-  List<String> _notAuthenticatedDevices = [];
+  void getVehicles() async {
+    final vehiclesData = await VehicleStorage.getVehicles();
 
-  Future<void> _requestPermission() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.location,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.notification,
-    ].request();
+    setState(() {
+      vehicles = vehiclesData
+          .map((vehicle) => Vehicle(
+                device: BleDevice(macAddress: vehicle.macAddress),
+                data: vehicle,
+              ))
+          .toList();
+    });
+
+    getConnectedDevices();
+
+    BleBackgroundService.tryConnectAll();
   }
 
-  void _getVehicles() async {
-    var vehicles = await VehicleStorage.getVehicles();
-    _vehicleEntries = vehicles
-        .map((vehicle) => VehicleEntry(
-            vehicleData: vehicle, isConnected: false, doorsLocked: false))
-        .toList();
+  void getConnectedDevices() async {
+    await VehicleStorage.reloadPrefs();
+    final connectedDevices = await BleBackgroundService.getConnectedDevices();
+    List<String> connectedDeviceMacs =
+        connectedDevices.map((e) => e.macAddress).toList();
 
-    _getConnectedDevices();
-    setState(() {});
-  }
+    for (final vehicle in vehicles) {
+      final connectedDevice = connectedDevices.firstWhere(
+        (device) => device.macAddress == vehicle.device.macAddress,
+        orElse: () => vehicle.device,
+      );
 
-  void _getConnectedDevices() async {
-    var connectedDevices = await BleService.getConnectedDevices();
-
-    for (var macAddress in connectedDevices) {
-      _vehicleEntries
-          .firstWhere((element) =>
-              element.vehicleData.macAddress.toLowerCase() ==
-              macAddress.toLowerCase())
-          .isConnected = true;
+      vehicle.device = connectedDevice;
+      vehicle.device.isConnected =
+          connectedDeviceMacs.contains(vehicle.device.macAddress);
+      print(
+          'Checking connected device: ${vehicle.device.macAddress}: Connected: ${vehicle.device.isConnected}');
     }
 
-    BleService.postEvent("SEND_MESSAGE:ds\n");
+    BleBackgroundService.requestData();
 
     setState(() {});
+  }
+
+  void processMessage(String macAddress, String message) {
+    if (message.startsWith('NOT_AUTH') || message.startsWith('AUTH_FAIL')) {
+      if (notAuthenticatedDevices.contains(macAddress)) {
+        return;
+      }
+      notAuthenticatedDevices.add(macAddress);
+      showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+                title: const Text('Not Authenticated'),
+                content: Text(
+                    'The device $macAddress you are trying to communicate with is not authenticated. Please make sure the pin is correct.'),
+                actions: [
+                  TextButton(
+                      onPressed: Navigator.of(context).pop,
+                      child: const Text('OK'))
+                ],
+              ));
+      setState(() {});
+    } else if (message.startsWith('AUTH_OK')) {
+      if (notAuthenticatedDevices.contains(macAddress)) {
+        notAuthenticatedDevices.remove(macAddress);
+        setState(() {});
+      }
+    } else if (message.startsWith('LOCKED')) {
+      setState(() => vehicles
+          .firstWhere((element) =>
+              element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
+          .doorsLocked = true);
+    } else if (message.startsWith('UNLOCKED')) {
+      setState(() => vehicles
+          .firstWhere((element) =>
+              element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
+          .doorsLocked = false);
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    _getVehicles();
-    _getConnectedDevices();
-
-    BleEventListener.listenForBleEvents((event) {});
-
-    BleEventListener.onDeviceConnected = (macAddress) {
-      _event = "Connected to $macAddress";
-      _vehicleEntries
-          .firstWhere((element) =>
-              element.vehicleData.macAddress.toLowerCase() ==
-              macAddress.toLowerCase())
-          .isConnected = true;
-      setState(() {});
-    };
-
-    BleEventListener.onDeviceDisconnected = (macAddress) {
-      _event = "Disconnected from $macAddress";
-      _vehicleEntries
-          .firstWhere((element) =>
-              element.vehicleData.macAddress.toLowerCase() ==
-              macAddress.toLowerCase())
-          .isConnected = false;
-      setState(() {});
-    };
-
-    BleEventListener.onMessageReceived = (macAddress, message) {
-      if (message.startsWith("NOT_AUTH")) {
-        if (_notAuthenticatedDevices.contains(macAddress)) {
-          return;
-        }
-        _notAuthenticatedDevices.add(macAddress);
-        showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-                  title: const Text("Not Authenticated"),
-                  content: Text(
-                      "The device $macAddress you are trying to communicate with is not Authenticated. Please make sure the Pin is correct."),
-                  actions: [
-                    TextButton(
-                        onPressed: Navigator.of(context).pop,
-                        child: const Text("OK"))
-                  ],
-                ));
-      } else if (message.startsWith("ld")) {
-        _vehicleEntries
-            .firstWhere((element) =>
-                element.vehicleData.macAddress.toLowerCase() ==
-                macAddress.toLowerCase())
-            .doorsLocked = true;
-        setState(() {});
-      } else if (message.startsWith("ud")) {
-        _vehicleEntries
-            .firstWhere((element) =>
-                element.vehicleData.macAddress.toLowerCase() ==
-                macAddress.toLowerCase())
-            .doorsLocked = false;
-        setState(() {});
+    service.on('message_received').listen((event) {
+      if (event != null) {
+        processMessage(event['macAddress'], event['message']);
       }
-    };
+    });
+    service.on('connection_state_changed').listen((event) {
+      if (event != null) {
+        getConnectedDevices();
+      }
+    });
+    getVehicles();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        body: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ListView.builder(
-            shrinkWrap: true,
-            itemCount: _vehicleEntries.length,
-            itemBuilder: (context, index) {
-              VehicleEntry vehicleEntry = _vehicleEntries[index];
-              return Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Builder(builder: (context) {
-                  //Builder needed or else colorScheme.secondaryContainer will be the fallback color
-                  return ListTile(
-                    onLongPress: () async {
-                      await EditVehicleBottomSheet.showBottomSheet(
-                          context, vehicleEntry.vehicleData);
-                      _getVehicles();
-                      setState(() {});
-                    },
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10.0)),
-                    tileColor: Theme.of(context).colorScheme.secondaryContainer,
-                    title: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              vehicleEntry.isConnected
-                                  ? Icons.bluetooth_audio
-                                  : Icons.bluetooth_disabled_rounded,
-                              color: vehicleEntry.isConnected
-                                  ? Colors.green
-                                  : Colors.red,
-                            ),
-                            SizedBox(width: 10),
-                            Text(vehicleEntry.vehicleData.name,
-                                style: const TextStyle(fontSize: 20)),
-                          ],
-                        ),
-                        Padding(
-                          padding:
-                              const EdgeInsets.only(left: 8.0, bottom: 4.0),
-                          child: Text(
-                              "Mac Address: ${vehicleEntry.vehicleData.macAddress}, Association ID: ${vehicleEntry.vehicleData.associationId}",
-                              style: const TextStyle(fontSize: 10)),
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(vehicleEntry.doorsLocked
-                                  ? Icons.lock_outline
-                                  : Icons.lock_open_outlined),
-                              onPressed: vehicleEntry.isConnected
-                                  ? () {
-                                      setState(() {
-                                        BleService.postEvent(
-                                            vehicleEntry.doorsLocked
-                                                ? "SEND_MESSAGE:ud\n"
-                                                : "SEND_MESSAGE:ld\n");
-                                      });
-                                    }
-                                  : null,
-                            ),
-                            vehicleEntry.vehicleData.hasTrunkUnlock
-                                ? IconButton(
-                                    icon: const Icon(Icons.directions_car),
-                                    onPressed: vehicleEntry.isConnected
-                                        ? () {
-                                            BleService.postEvent(
-                                                "SEND_MESSAGE:ut\n");
-                                          }
-                                        : null,
-                                  )
-                                : Container(),
-                            vehicleEntry.vehicleData.hasEngineStart
-                                ? IconButton(
-                                    icon: const Icon(Icons.restart_alt),
-                                    onPressed: vehicleEntry.isConnected
-                                        ? () {
-                                            BleService.postEvent(
-                                                "SEND_MESSAGE:st\n");
-                                          }
-                                        : null,
-                                  )
-                                : Container(),
-                          ],
-                        ),
-                      ],
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () async {
-                        // Delete vehicle from Hive box
-                        VehicleStorage.removeVehicle(
-                            vehicleEntry.vehicleData.macAddress);
-
-                        print(
-                            "Removing Association ID: ${vehicleEntry.vehicleData.associationId}");
-                        await BleService.disassociateBle(
-                            vehicleEntry.vehicleData.associationId,
-                            vehicleEntry.vehicleData.macAddress);
-
-                        _getVehicles();
-                        setState(() {});
-                      },
-                    ),
-                  );
+        appBar: AppBar(
+          title: const Text('Open Car Key'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                //getVehicles();
+                BleBackgroundService.tryConnectAll();
+                getConnectedDevices();
+                setState(() {});
+              },
+            ),
+            IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/settings');
                 }),
-              );
-            }),
-        Text(_event),
-        FilledButton(
-            onPressed: () async {
-              await _requestPermission();
-              await AddVehicleBottomSheet.showBottomSheet(context);
-              //BleService.associateBle();
-              /*final NativeSharedPreferences prefs = await _prefs;
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () async {
+            // await _requestPermission();
+            await AddVehicleBottomSheet.showBottomSheet(context);
+            //BleService.associateBle();
+            /*final NativeSharedPreferences prefs = await _prefs;
               await prefs.reload();
               _event =
                   prefs.getString('device_mac_address') ?? 'Not associated';
               setState(() {});*/
-              _getVehicles();
-            },
-            child: const Text("Add a Vehicle")),
-      ],
-    ));
+            getVehicles();
+          },
+          child: const Icon(Icons.add),
+        ),
+        body: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ListView.builder(
+                shrinkWrap: true,
+                itemCount: vehicles.length,
+                itemBuilder: (context, index) {
+                  Vehicle vehicle = vehicles[index];
+                  return Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Builder(builder: (context) {
+                      //Builder needed or else colorScheme.secondaryContainer will be the fallback color
+                      return ListTile(
+                        onLongPress: () async {
+                          await EditVehicleBottomSheet.showBottomSheet(
+                              context, vehicle);
+                          getVehicles();
+                          setState(() {});
+                        },
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.0)),
+                        tileColor:
+                            Theme.of(context).colorScheme.secondaryContainer,
+                        title: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  vehicle.device.isConnected
+                                      ? Icons.bluetooth_audio
+                                      : Icons.bluetooth_disabled_rounded,
+                                  color: vehicle.device.isConnected
+                                      ? Colors.green
+                                      : Colors.red,
+                                ),
+                                SizedBox(width: 10),
+                                Text(
+                                  vehicle.data.name,
+                                  style: const TextStyle(fontSize: 20),
+                                ),
+                                Spacer(),
+                                if (notAuthenticatedDevices.contains(
+                                    vehicle.device.macAddress.toString()))
+                                  Icon(
+                                    Icons.pin,
+                                    color: Colors.amber,
+                                  ),
+                              ],
+                            ),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(left: 8.0, bottom: 4.0),
+                              child: Text(
+                                  'Mac Address: ${vehicle.data.macAddress}',
+                                  style: const TextStyle(fontSize: 10)),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(vehicle.doorsLocked
+                                      ? Icons.lock_outline
+                                      : Icons.lock_open_outlined),
+                                  onPressed: vehicle.device.isConnected
+                                      ? () {
+                                          BleBackgroundService.sendMessage(
+                                            vehicle.device,
+                                            vehicle.doorsLocked
+                                                ? 'UNLOCK'
+                                                : 'LOCK',
+                                          );
+                                        }
+                                      : null,
+                                ),
+                                vehicle.data.hasTrunkUnlock
+                                    ? IconButton(
+                                        icon: const Icon(Icons.directions_car),
+                                        onPressed: vehicle.device.isConnected
+                                            ? () {
+                                                BleBackgroundService
+                                                    .sendMessage(
+                                                  vehicle.device,
+                                                  'UNLOCK_TRUNK',
+                                                );
+                                              }
+                                            : null,
+                                      )
+                                    : Container(),
+                                vehicle.data.hasEngineStart
+                                    ? IconButton(
+                                        icon: const Icon(Icons.restart_alt),
+                                        onPressed: vehicle.device.isConnected
+                                            ? () {
+                                                //TODO: Implement engine start
+                                              }
+                                            : null,
+                                      )
+                                    : Container(),
+                              ],
+                            ),
+                          ],
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete),
+                          onPressed: () async {
+                            final confirmed = showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete Vehicle'),
+                                content: Text(
+                                    'Are you sure you want to delete ${vehicle.data.name}?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(true),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (!(await confirmed)) return;
+                            print('Deleting vehicle: ${vehicle.data.name}');
+
+                            VehicleStorage.removeVehicle(
+                                vehicle.data.macAddress);
+
+                            setState(() => vehicles.removeAt(index));
+
+                            BleBackgroundService.reloadVehicles();
+
+                            BleBackgroundService.disconnectDevice(
+                                vehicle.device);
+
+                            //getVehicles();
+                          },
+                        ),
+                      );
+                    }),
+                  );
+                }),
+            Text(eventData),
+          ],
+        ));
   }
-}
-
-class VehicleEntry {
-  Vehicle vehicleData;
-  bool isConnected;
-  bool doorsLocked;
-
-  VehicleEntry({
-    required this.vehicleData,
-    required this.isConnected,
-    required this.doorsLocked,
-  });
 }
