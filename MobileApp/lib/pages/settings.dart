@@ -164,7 +164,7 @@ class _SettingsState extends State<SettingsPage> {
                     min: 1,
                     max: 15,
                     divisions: 14,
-                    label: '${deadZone.toInt().toString()} m',
+                    label: '~${deadZone.toInt().toString()} m',
                     onChanged: (value) {
                       prefs.setDouble('deadZone', value);
                       BleBackgroundService.setDeadZone(value);
