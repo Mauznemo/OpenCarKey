@@ -20,7 +20,7 @@ void (*onConnected)() = nullptr;
 void (*onDisconnected)() = nullptr;
 void (*onLocked)() = nullptr;
 void (*onUnlocked)() = nullptr;
-void (*onTrunkOpend)() = nullptr;
+void (*onTrunkOpened)() = nullptr;
 void (*onEngineStarted)() = nullptr;
 
 bool isLocked = true;
@@ -77,8 +77,8 @@ namespace
 
     void openTrunk()
     {
-        if (onTrunkOpend)
-            onTrunkOpend();
+        if (onTrunkOpened)
+            onTrunkOpened();
     }
 
     void startEngine()
@@ -274,7 +274,7 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 void setupBluetooth()
 {
     // Create the BLE Device
-    BLEDevice::init("ESP32_Lock");
+    BLEDevice::init(DEVICE_NAME);
 
     // Create the BLE Server
     pServer = BLEDevice::createServer();
