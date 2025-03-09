@@ -173,7 +173,7 @@ class _HomePageState extends State<HomePage> {
                           setState(() {});
                         },
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10.0)),
+                            borderRadius: BorderRadius.circular(20.0)),
                         tileColor:
                             Theme.of(context).colorScheme.secondaryContainer,
                         title: Column(
@@ -192,7 +192,8 @@ class _HomePageState extends State<HomePage> {
                                 SizedBox(width: 10),
                                 Text(
                                   vehicle.data.name,
-                                  style: const TextStyle(fontSize: 20),
+                                  style:
+                                      Theme.of(context).textTheme.headlineSmall,
                                 ),
                                 Spacer(),
                                 if (notAuthenticatedDevices.contains(
@@ -203,53 +204,103 @@ class _HomePageState extends State<HomePage> {
                                   ),
                               ],
                             ),
+                            const SizedBox(height: 4),
                             Padding(
                               padding:
                                   const EdgeInsets.only(left: 8.0, bottom: 4.0),
                               child: Text(
                                   'Mac Address: ${vehicle.data.macAddress}',
-                                  style: const TextStyle(fontSize: 10)),
+                                  style: const TextStyle(fontSize: 12)),
                             ),
+                            const SizedBox(height: 10),
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(
-                                  icon: Icon(vehicle.doorsLocked
-                                      ? Icons.lock_outline
-                                      : Icons.lock_open_outlined),
-                                  onPressed: vehicle.device.isConnected
-                                      ? () {
-                                          BleBackgroundService.sendMessage(
-                                            vehicle.device,
-                                            vehicle.doorsLocked
-                                                ? 'UNLOCK'
-                                                : 'LOCK',
-                                          );
-                                        }
-                                      : null,
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 5),
+                                  child: Ink(
+                                    decoration: ShapeDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withAlpha(50),
+                                      shape: CircleBorder(),
+                                    ),
+                                    child: IconButton(
+                                      icon: Icon(
+                                          vehicle.doorsLocked
+                                              ? Icons.lock
+                                              : Icons.lock_open,
+                                          size: 30),
+                                      onPressed: vehicle.device.isConnected
+                                          ? () {
+                                              BleBackgroundService.sendMessage(
+                                                vehicle.device,
+                                                vehicle.doorsLocked
+                                                    ? 'UNLOCK'
+                                                    : 'LOCK',
+                                              );
+                                            }
+                                          : null,
+                                    ),
+                                  ),
                                 ),
                                 vehicle.data.hasTrunkUnlock
-                                    ? IconButton(
-                                        icon: const Icon(Icons.directions_car),
-                                        onPressed: vehicle.device.isConnected
-                                            ? () {
-                                                BleBackgroundService
-                                                    .sendMessage(
-                                                  vehicle.device,
-                                                  'UNLOCK_TRUNK',
-                                                );
-                                              }
-                                            : null,
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5),
+                                        child: Ink(
+                                          decoration: ShapeDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                                .withAlpha(50),
+                                            shape: CircleBorder(),
+                                          ),
+                                          child: IconButton(
+                                            icon: const Icon(
+                                              Icons.directions_car_outlined,
+                                              size: 30,
+                                            ),
+                                            onPressed:
+                                                vehicle.device.isConnected
+                                                    ? () {
+                                                        BleBackgroundService
+                                                            .sendMessage(
+                                                          vehicle.device,
+                                                          'UNLOCK_TRUNK',
+                                                        );
+                                                      }
+                                                    : null,
+                                          ),
+                                        ),
                                       )
                                     : Container(),
                                 vehicle.data.hasEngineStart
-                                    ? IconButton(
-                                        icon: const Icon(Icons.restart_alt),
-                                        onPressed: vehicle.device.isConnected
-                                            ? () {
-                                                //TODO: Implement engine start
-                                              }
-                                            : null,
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5),
+                                        child: Ink(
+                                          decoration: ShapeDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                                .withAlpha(50),
+                                            shape: CircleBorder(),
+                                          ),
+                                          child: IconButton(
+                                            icon: const Icon(
+                                              Icons.restart_alt,
+                                              size: 30,
+                                            ),
+                                            onPressed:
+                                                vehicle.device.isConnected
+                                                    ? () {
+                                                        //TODO: Implement engine start
+                                                      }
+                                                    : null,
+                                          ),
+                                        ),
                                       )
                                     : Container(),
                               ],
@@ -299,7 +350,6 @@ class _HomePageState extends State<HomePage> {
                     }),
                   );
                 }),
-            Text(eventData),
           ],
         ));
   }
