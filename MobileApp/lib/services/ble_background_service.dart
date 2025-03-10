@@ -36,8 +36,8 @@ class BleBackgroundService {
     // For Android notification channel
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'ble_connect_service', // id
-      'BLE Auto Connect Service', // title
-      description: 'Background service for BLE auto connect',
+      'BLE Background Service', // title
+      description: 'Background service for BLE proximity key',
       importance: Importance.low,
     );
 
@@ -59,8 +59,8 @@ class BleBackgroundService {
         autoStartOnBoot: true,
         isForegroundMode: true,
         notificationChannelId: 'ble_connect_service',
-        initialNotificationTitle: 'Waiting for connection',
-        initialNotificationContent: 'Go near your vehicle to connect',
+        initialNotificationTitle: 'Initializing',
+        initialNotificationContent: 'Initializing BLE Service...',
         foregroundServiceNotificationId: 888,
       ),
       iosConfiguration: IosConfiguration(
@@ -100,6 +100,9 @@ class BleBackgroundService {
     }
 
     print('Background service started...');
+
+    _updateNotification(flutterLocalNotificationsPlugin,
+        'Waiting for connection...', 'Go near a vehicle to connect.');
 
     await BleDeviceStorage.clearBleDevices();
 
