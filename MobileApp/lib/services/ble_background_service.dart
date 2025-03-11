@@ -27,6 +27,7 @@ class BleBackgroundService {
   static double _proximityStrength = 100;
   static bool _vibrate = true;
   static double _deadZone = 4;
+  static double _proximityCooldown = 1;
 
   // This should be in your main.dart before runApp
   static Future<void> initializeService() async {
@@ -111,6 +112,7 @@ class BleBackgroundService {
     _proximityStrength = _prefs.getDouble('triggerStrength') ?? -200;
     _deadZone = _prefs.getDouble('deadZone') ?? 4;
     _vibrate = _prefs.getBool('vibrate') ?? true;
+    _proximityCooldown = _prefs.getDouble('proximityCooldown') ?? 1;
 
     service.on('set_proximity_key').listen((event) async {
       if (event == null) return;
@@ -119,7 +121,25 @@ class BleBackgroundService {
 
       String message = enabled ? 'PROX_KEY_ON' : 'PROX_KEY_OFF';
       for (final vehicle in vehicles) {
+        if (!vehicle.device.isConnected) continue;
         await BleService.sendMessage(vehicle.device, message);
+        await Future.delayed(Duration(milliseconds: 200));
+        await BleService.sendMessage(vehicle.device,
+            'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}');
+        await Future.delayed(Duration(milliseconds: 200));
+        await BleService.sendMessage(vehicle.device,
+            'PROX_COOLD:${_proximityCooldown.toStringAsFixed(2)}');
+      }
+    });
+
+    service.on('set_proximity_cooldown').listen((event) async {
+      if (event == null) return;
+      double cooldown = event['cooldown'].toDouble();
+      _proximityCooldown = cooldown;
+      for (final vehicle in vehicles) {
+        if (!vehicle.device.isConnected) continue;
+        await BleService.sendMessage(
+            vehicle.device, 'PROX_COOLD:${cooldown.toStringAsFixed(2)}');
       }
     });
 
@@ -264,6 +284,9 @@ class BleBackgroundService {
           await Future.delayed(Duration(milliseconds: 200));
           await BleService.sendMessage(changedVehicle.device,
               'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}'); //
+          await Future.delayed(Duration(milliseconds: 200));
+          await BleService.sendMessage(changedVehicle.device,
+              'PROX_COOLD:${_proximityCooldown.toStringAsFixed(2)}');
           await Future.delayed(Duration(milliseconds: 200));
           await BleService.sendMessage(changedVehicle.device, 'PROX_KEY_ON');
         }
@@ -449,6 +472,10 @@ class BleBackgroundService {
 
   static void requestData() {
     _service.invoke('send_data', {});
+  }
+
+  static void setProximityCooldown(double cooldown) {
+    _service.invoke('set_proximity_cooldown', {'cooldown': cooldown});
   }
 
   static void setVibrate(bool enabled) {

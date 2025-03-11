@@ -16,6 +16,7 @@ class _SettingsState extends State<SettingsPage> {
   bool vibrate = true;
   double triggerStrength = -200;
   double deadZone = 4;
+  double proximityCooldown = 1; //in min
 
   void loadPrefs() async {
     prefs = await SharedPreferences.getInstance();
@@ -24,8 +25,22 @@ class _SettingsState extends State<SettingsPage> {
     triggerStrength = prefs.getDouble('triggerStrength') ?? -200;
     vibrate = prefs.getBool('vibrate') ?? true;
     deadZone = prefs.getDouble('deadZone') ?? 4;
+    proximityCooldown = prefs.getDouble('proximityCooldown') ?? 1;
 
     setState(() {});
+  }
+
+  String convertToMinSecString(double value) {
+    int totalSeconds = (value * 60).toInt();
+    int minutes = totalSeconds ~/ 60;
+    int seconds = totalSeconds % 60;
+    if (minutes == 0) {
+      return '$seconds sec';
+    } else if (seconds == 0) {
+      return '$minutes min';
+    } else {
+      return '$minutes min $seconds sec';
+    }
   }
 
   @override
@@ -111,7 +126,8 @@ class _SettingsState extends State<SettingsPage> {
                           children: [
                             const Icon(Icons.warning_amber_rounded),
                             const SizedBox(width: 10),
-                            Text('Range is not set yet'),
+                            Text(
+                                'Range is not set yet (using connect and disconnect)'),
                           ],
                         )
                       : Row(
@@ -122,7 +138,16 @@ class _SettingsState extends State<SettingsPage> {
                                 'Range is set to ${triggerStrength.toStringAsFixed(2)} dBm'),
                           ],
                         ),
-                  FilledButton(
+                ],
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Tooltip(
+                  message: 'Set a signal strength to lock and unlock at',
+                  showDuration: const Duration(seconds: 5),
+                  child: FilledButton(
                       onPressed: () async {
                         await Navigator.pushNamed(
                             context, '/range_calibration');
@@ -130,9 +155,23 @@ class _SettingsState extends State<SettingsPage> {
                             prefs.getDouble('triggerStrength') ?? -200;
                         setState(() {});
                       },
-                      child: const Text('Calibrate Range')),
-                ],
-              ),
+                      child: const Text('Set Range')),
+                ),
+                Tooltip(
+                  message:
+                      'Use connect and disconnect instead of signal strength',
+                  showDuration: const Duration(seconds: 5),
+                  child: FilledButton(
+                      onPressed: () {
+                        prefs.setDouble('triggerStrength', -200);
+                        BleBackgroundService.setProximityStrength(-200);
+                        triggerStrength = -200;
+
+                        setState(() {});
+                      },
+                      child: const Text('Reset Range')),
+                )
+              ],
             ),
             const SizedBox(height: 20),
             Row(mainAxisAlignment: MainAxisAlignment.start, children: [
@@ -171,6 +210,45 @@ class _SettingsState extends State<SettingsPage> {
 
                       setState(() {
                         deadZone = value;
+                      });
+                    })),
+            const SizedBox(height: 20),
+            Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.only(left: 8.0),
+                  child: Text(
+                    'Proximity Cooldown',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
+              Tooltip(
+                  message:
+                      'Time to not unlock/lock again after locking/unlocking. To prevent rapid locking and unlocking while getting close or going away.',
+                  triggerMode: TooltipTriggerMode.tap,
+                  showDuration: const Duration(minutes: 1),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Icon(Icons.info_outline),
+                  )),
+            ]),
+            SliderTheme(
+                data: SliderTheme.of(context)
+                    .copyWith(year2023: false, padding: EdgeInsets.all(8)),
+                child: Slider(
+                    value: proximityCooldown,
+                    min: 0,
+                    max: 5,
+                    divisions: 10,
+                    label: convertToMinSecString(proximityCooldown),
+                    onChanged: (value) {
+                      prefs.setDouble('proximityCooldown', value);
+                      BleBackgroundService.setProximityCooldown(value);
+
+                      setState(() {
+                        proximityCooldown = value;
                       });
                     }))
           ]),
