@@ -40,11 +40,23 @@ bool bufferFilled = false;
 unsigned long previousRssiMillis = 0;
 const long rssiInterval = 500;
 bool sendRssi = false;
+float proximityCooldown = 1; // in min
+unsigned long previousProximityMillis = 0;
 
 namespace
 {
-    void lock(bool proximity = false)
+    void lock(bool proximity = false, bool ignoreCooldown = false)
     {
+        if (proximity && proximityCooldown != 0 && !ignoreCooldown)
+        {
+            if ((millis() - previousProximityMillis) < (proximityCooldown * 60000))
+            {
+                return;
+            }
+
+            previousProximityMillis = millis();
+        }
+
         if (deviceConnected)
         {
             pCharacteristic->setValue(proximity ? "LOCKED_PROX" : "LOCKED");
@@ -59,8 +71,18 @@ namespace
         Serial.println("Locked (proximity:" + String(proximity) + ")");
     }
 
-    void unlock(bool proximity = false)
+    void unlock(bool proximity = false, bool ignoreCooldown = false)
     {
+        if (proximity && proximityCooldown != 0 && !ignoreCooldown)
+        {
+            if ((millis() - previousProximityMillis) < (proximityCooldown * 60000))
+            {
+                return;
+            }
+
+            previousProximityMillis = millis();
+        }
+
         if (deviceConnected)
         {
             pCharacteristic->setValue(proximity ? "UNLOCKED_PROX" : "UNLOCKED");
@@ -121,10 +143,12 @@ class MyServerCallbacks : public BLEServerCallbacks
     {
         Serial.println("Disconnected");
         deviceConnected = false;
-        isAuthenticated = false; // Reset authentication on disconnect
-        if (autoLocking && !isLocked)
+        isAuthenticated = false;      // Reset authentication on disconnect
+        if (autoLocking && !isLocked) // Only true if disconnected before auto locking
         {
-            lock(true);
+            // Possible edge case when proximity key is set to connection range and it connects, unlocks, but then looses connection
+            // so it would auto lock, but now it would take the cooldown time to unlock again
+            lock(true, true); // Ignoring cooldown here to avoid car being unlocked for too long
         }
         autoLocking = false;
 
@@ -216,6 +240,11 @@ class MyCallbacks : public BLECharacteristicCallbacks
             else if (command == "RSSI")
             {
                 sendRssi = true;
+            }
+            else if (command.startsWith("PROX_COOLD:"))
+            {
+                proximityCooldown = command.substring(11).toFloat();
+                Serial.println("Proximity cooldown set: " + String(proximityCooldown));
             }
         }
     }
