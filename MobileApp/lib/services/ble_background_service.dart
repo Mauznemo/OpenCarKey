@@ -123,12 +123,14 @@ class BleBackgroundService {
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
         await BleService.sendMessage(vehicle.device, message);
-        await Future.delayed(Duration(milliseconds: 200));
-        await BleService.sendMessage(vehicle.device,
-            'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}');
-        await Future.delayed(Duration(milliseconds: 200));
-        await BleService.sendMessage(vehicle.device,
-            'PROX_COOLD:${_proximityCooldown.toStringAsFixed(2)}');
+        if (enabled) {
+          await Future.delayed(Duration(milliseconds: 200));
+          await BleService.sendMessage(vehicle.device,
+              'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}');
+          await Future.delayed(Duration(milliseconds: 200));
+          await BleService.sendMessage(vehicle.device,
+              'PROX_COOLD:${_proximityCooldown.toStringAsFixed(2)}');
+        }
       }
     });
 
