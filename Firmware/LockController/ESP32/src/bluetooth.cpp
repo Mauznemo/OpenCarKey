@@ -47,15 +47,16 @@ namespace
 {
     void lock(bool proximity = false, bool ignoreCooldown = false)
     {
-        if (proximity && proximityCooldown != 0 && !ignoreCooldown)
+        if (proximity &&
+            proximityCooldown != 0 &&
+            !ignoreCooldown &&
+            ((millis() - previousProximityMillis) < (proximityCooldown * 60000)))
         {
-            if ((millis() - previousProximityMillis) < (proximityCooldown * 60000))
-            {
-                return;
-            }
-
-            previousProximityMillis = millis();
+            return;
         }
+
+        if (proximity)
+            previousProximityMillis = millis();
 
         if (deviceConnected)
         {
@@ -73,15 +74,17 @@ namespace
 
     void unlock(bool proximity = false, bool ignoreCooldown = false)
     {
-        if (proximity && proximityCooldown != 0 && !ignoreCooldown)
-        {
-            if ((millis() - previousProximityMillis) < (proximityCooldown * 60000))
-            {
-                return;
-            }
 
-            previousProximityMillis = millis();
+        if (proximity &&
+            proximityCooldown != 0 &&
+            !ignoreCooldown &&
+            ((millis() - previousProximityMillis) < (proximityCooldown * 60000)))
+        {
+            return;
         }
+
+        if (proximity)
+            previousProximityMillis = millis();
 
         if (deviceConnected)
         {
