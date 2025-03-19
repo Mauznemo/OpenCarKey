@@ -38,8 +38,6 @@ class BleService {
         print('Connection error: $e');
       });
 
-      if (!device.isConnected) return null;
-
       print('Connected to device: ${device.advName}');
 
       return device;
