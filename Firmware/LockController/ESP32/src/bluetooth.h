@@ -10,8 +10,8 @@ extern void (*onDisconnected)();
 extern void (*onLocked)();
 /// @brief Called when the car gets unlocked
 extern void (*onUnlocked)();
-/// @brief Called when the trunk gets opend
-extern void (*onTrunkOpend)();
+/// @brief Called when the trunk gets opened
+extern void (*onTrunkOpened)();
 /// @brief Called when the engine gets started from the app
 extern void (*onEngineStarted)();
 

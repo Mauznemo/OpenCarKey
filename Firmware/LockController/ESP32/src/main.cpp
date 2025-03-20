@@ -73,7 +73,7 @@ void setup()
 
   onLocked = lock;
   onUnlocked = unlock;
-  onTrunkOpend = openTrunk;
+  onTrunkOpened = openTrunk;
 
   Serial.println("BLE Lock Controller Ready");
 }

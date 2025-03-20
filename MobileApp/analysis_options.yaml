@@ -1,28 +1,56 @@
-# This file configures the analyzer, which statically analyzes Dart code to
-# check for errors, warnings, and lints.
-#
-# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
-# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
-# invoked from the command line by running `flutter analyze`.
-
-# The following line activates a set of recommended lints for Flutter apps,
-# packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
-linter:
-  # The lint rules applied to this project can be customized in the
-  # section below to disable rules from the `package:flutter_lints/flutter.yaml`
-  # included above or to enable additional rules. A list of all available lints
-  # and their documentation is published at https://dart.dev/lints.
-  #
-  # Instead of disabling a lint rule for the entire project in the
-  # section below, it can also be suppressed for a single line of code
-  # or a specific dart file by using the `// ignore: name_of_lint` and
-  # `// ignore_for_file: name_of_lint` syntax on the line or in the file
-  # producing the lint.
-  rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+analyzer:
+  errors:
+    missing_required_param: error
+    missing_return: error
+  language:
+    strict-raw-types: true
+  plugins:
+    - dart_code_linter
 
-# Additional information about this file can be found at
-# https://dart.dev/guides/language/analysis-options
+dart_code_linter:
+  metrics:
+    cyclomatic-complexity: 25
+    number-of-parameters: 10
+    maximum-nesting-level: 10
+  rules:
+    - avoid-redundant-async
+    - prefer-correct-edge-insets-constructor
+    - prefer-const-border-radius
+    - avoid-wrapping-in-padding
+    - use-setstate-synchronously
+    - always-remove-listener
+
+linter:
+  rules:
+    always_declare_return_types: true
+    annotate_overrides: true
+    avoid_empty_else: true
+    avoid_init_to_null: true
+    avoid_null_checks_in_equality_operators: true
+    avoid_print: true
+    avoid_shadowing_type_parameters: true
+    avoid_single_cascade_in_expression_statements: true
+    avoid_types_as_parameter_names: true
+    avoid_web_libraries_in_flutter: true
+    await_only_futures: true
+    camel_case_extensions: true
+    camel_case_types: true
+    curly_braces_in_flow_control_structures: false
+    empty_constructor_bodies: true
+    empty_statements: true
+    eol_at_end_of_file: false
+    file_names: true
+    implementation_imports: true
+    no_duplicate_case_values: true
+    prefer_conditional_assignment: true
+    prefer_final_fields: true
+    prefer_interpolation_to_compose_strings: true
+    prefer_relative_imports: true
+    prefer_single_quotes: true
+    unnecessary_brace_in_string_interps: true
+    unnecessary_statements: true
+    unrelated_type_equality_checks: true
+    use_build_context_synchronously: true
+    valid_regexps: true
