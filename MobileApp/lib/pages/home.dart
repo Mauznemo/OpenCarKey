@@ -1,14 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
-import '../services/ble_service.dart';
+import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
+import '../types/ble_device.dart';
 import '../types/vehicle.dart';
-import '../utils/utils.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -18,6 +18,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  final FlutterBackgroundService service = FlutterBackgroundService();
   List<Vehicle> vehicles = [];
 
   late String eventData = '--';
@@ -30,38 +31,37 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       vehicles = vehiclesData
           .map((vehicle) => Vehicle(
-                device: BluetoothDevice.fromId(vehicle.macAddress),
+                device: BleDevice(macAddress: vehicle.macAddress),
                 data: vehicle,
               ))
           .toList();
     });
 
-    connectDevices();
+    getConnectedDevices();
 
-    // getConnectedDevices();
-  }
-
-  void connectDevices() async {
-    for (final vehicle in vehicles) {
-      await BleService.connectToDevice(vehicle.device);
-    }
+    BleBackgroundService.tryConnectAll();
   }
 
   void getConnectedDevices() async {
-    final connectedDevices = await BleService.getConnectedDevices();
+    await VehicleStorage.reloadPrefs();
+    final connectedDevices = await BleBackgroundService.getConnectedDevices();
+    List<String> connectedDeviceMacs =
+        connectedDevices.map((e) => e.macAddress).toList();
 
     for (final vehicle in vehicles) {
       final connectedDevice = connectedDevices.firstWhere(
-        (device) => device.remoteId == vehicle.device.remoteId,
+        (device) => device.macAddress == vehicle.device.macAddress,
         orElse: () => vehicle.device,
       );
 
       vehicle.device = connectedDevice;
-      vehicle.device.connect();
+      vehicle.device.isConnected =
+          connectedDeviceMacs.contains(vehicle.device.macAddress);
+      print(
+          'Checking connected device: ${vehicle.device.macAddress}: Connected: ${vehicle.device.isConnected}');
     }
 
-    if (connectedDevices.isNotEmpty)
-      await BleService.sendMessage(connectedDevices.first, 'ds');
+    BleBackgroundService.requestData();
 
     setState(() {});
   }
@@ -84,59 +84,39 @@ class _HomePageState extends State<HomePage> {
                       child: const Text('OK'))
                 ],
               ));
+      setState(() {});
     } else if (message.startsWith('AUTH_OK')) {
       if (notAuthenticatedDevices.contains(macAddress)) {
         notAuthenticatedDevices.remove(macAddress);
+        setState(() {});
       }
-    } else if (message.startsWith('ld')) {
+    } else if (message.startsWith('LOCKED')) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
           .doorsLocked = true);
-    } else if (message.startsWith('ud')) {
+    } else if (message.startsWith('UNLOCKED')) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
           .doorsLocked = false);
-    } else if (message.startsWith('ut')) {
-      scaffoldMessengerKey.currentState?.showSnackBar(
-        const SnackBar(
-          content: Text('Trunk unlocked'),
-        ),
-      );
     }
   }
 
   @override
   void initState() {
     super.initState();
+    service.on('message_received').listen((event) {
+      if (event != null) {
+        processMessage(event['macAddress'], event['message']);
+      }
+    });
+    service.on('connection_state_changed').listen((event) {
+      if (event != null) {
+        getConnectedDevices();
+      }
+    });
     getVehicles();
-
-    FlutterBluePlus.events.onConnectionStateChanged.listen((event) async {
-      Vehicle changedVehicle = vehicles.firstWhere(
-          (vehicle) => vehicle.device.remoteId == event.device.remoteId);
-
-      changedVehicle.device = event.device;
-
-      if (event.connectionState == BluetoothConnectionState.connected)
-        await BleService.sendMessage(
-            changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
-
-      setState(() =>
-          vehicles.firstWhere(
-              (vehicle) => vehicle.device.remoteId == event.device.remoteId) ==
-          changedVehicle);
-    });
-
-    FlutterBluePlus.events.onCharacteristicReceived.listen((event) {
-      eventData = 'Characteristic received: ${utf8.decode(event.value)}';
-      print('Characteristic received: ${utf8.decode(event.value)}');
-
-      processMessage(
-          event.device.remoteId.toString(), utf8.decode(event.value));
-
-      setState(() {});
-    });
   }
 
   @override
@@ -148,10 +128,17 @@ class _HomePageState extends State<HomePage> {
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () {
-                getVehicles();
+                //getVehicles();
+                BleBackgroundService.tryConnectAll();
+                getConnectedDevices();
                 setState(() {});
               },
             ),
+            IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/settings');
+                }),
           ],
         ),
         floatingActionButton: FloatingActionButton(
@@ -188,7 +175,7 @@ class _HomePageState extends State<HomePage> {
                           setState(() {});
                         },
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10.0)),
+                            borderRadius: BorderRadius.circular(20.0)),
                         tileColor:
                             Theme.of(context).colorScheme.secondaryContainer,
                         title: Column(
@@ -207,62 +194,115 @@ class _HomePageState extends State<HomePage> {
                                 SizedBox(width: 10),
                                 Text(
                                   vehicle.data.name,
-                                  style: const TextStyle(fontSize: 20),
+                                  style:
+                                      Theme.of(context).textTheme.headlineSmall,
                                 ),
                                 Spacer(),
                                 if (notAuthenticatedDevices.contains(
-                                    vehicle.device.remoteId.toString()))
+                                    vehicle.device.macAddress.toString()))
                                   Icon(
                                     Icons.pin,
                                     color: Colors.amber,
                                   ),
                               ],
                             ),
+                            const SizedBox(height: 4),
                             Padding(
                               padding:
                                   const EdgeInsets.only(left: 8.0, bottom: 4.0),
                               child: Text(
-                                  'Mac Address: ${vehicle.data.macAddress}, Association ID: ${null}',
-                                  style: const TextStyle(fontSize: 10)),
+                                  'Mac Address: ${vehicle.data.macAddress}',
+                                  style: const TextStyle(fontSize: 12)),
                             ),
+                            const SizedBox(height: 10),
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(
-                                  icon: Icon(vehicle.doorsLocked
-                                      ? Icons.lock_outline
-                                      : Icons.lock_open_outlined),
-                                  onPressed: vehicle.device.isConnected
-                                      ? () async {
-                                          await BleService.sendMessage(
-                                            vehicle.device,
-                                            vehicle.doorsLocked ? 'ud' : 'ld',
-                                          );
-                                        }
-                                      : null,
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 5),
+                                  child: Ink(
+                                    decoration: ShapeDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withAlpha(50),
+                                      shape: CircleBorder(),
+                                    ),
+                                    child: IconButton(
+                                      icon: Icon(
+                                          vehicle.doorsLocked
+                                              ? Icons.lock
+                                              : Icons.lock_open,
+                                          size: 30),
+                                      onPressed: vehicle.device.isConnected
+                                          ? () {
+                                              BleBackgroundService.sendMessage(
+                                                vehicle.device,
+                                                vehicle.doorsLocked
+                                                    ? 'UNLOCK'
+                                                    : 'LOCK',
+                                              );
+                                            }
+                                          : null,
+                                    ),
+                                  ),
                                 ),
                                 vehicle.data.hasTrunkUnlock
-                                    ? IconButton(
-                                        icon: const Icon(Icons.directions_car),
-                                        onPressed: vehicle.device.isConnected
-                                            ? () async {
-                                                await BleService.sendMessage(
-                                                  vehicle.device,
-                                                  'ut',
-                                                );
-                                              }
-                                            : null,
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5),
+                                        child: Ink(
+                                          decoration: ShapeDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                                .withAlpha(50),
+                                            shape: CircleBorder(),
+                                          ),
+                                          child: IconButton(
+                                            icon: const Icon(
+                                              Icons.directions_car_outlined,
+                                              size: 30,
+                                            ),
+                                            onPressed:
+                                                vehicle.device.isConnected
+                                                    ? () {
+                                                        BleBackgroundService
+                                                            .sendMessage(
+                                                          vehicle.device,
+                                                          'UNLOCK_TRUNK',
+                                                        );
+                                                      }
+                                                    : null,
+                                          ),
+                                        ),
                                       )
                                     : Container(),
                                 vehicle.data.hasEngineStart
-                                    ? IconButton(
-                                        icon: const Icon(Icons.restart_alt),
-                                        onPressed: vehicle.device.isConnected
-                                            ? () {
-                                                BleService.postEvent(
-                                                    'SEND_MESSAGE:st\n');
-                                              }
-                                            : null,
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5),
+                                        child: Ink(
+                                          decoration: ShapeDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                                .withAlpha(50),
+                                            shape: CircleBorder(),
+                                          ),
+                                          child: IconButton(
+                                            icon: const Icon(
+                                              Icons.restart_alt,
+                                              size: 30,
+                                            ),
+                                            onPressed:
+                                                vehicle.device.isConnected
+                                                    ? () {
+                                                        //TODO: Implement engine start
+                                                      }
+                                                    : null,
+                                          ),
+                                        ),
                                       )
                                     : Container(),
                               ],
@@ -293,29 +333,25 @@ class _HomePageState extends State<HomePage> {
                               ),
                             );
                             if (!(await confirmed)) return;
+                            print('Deleting vehicle: ${vehicle.data.name}');
 
                             VehicleStorage.removeVehicle(
                                 vehicle.data.macAddress);
 
                             setState(() => vehicles.removeAt(index));
 
-                            if (vehicle.device.isConnected)
-                              await BleService.disconnectDevice(vehicle.device);
+                            BleBackgroundService.reloadVehicles();
 
-                            // print(
-                            //     "Removing Association ID: ${vehicleEntry.vehicleData.associationId}");
-                            // await BleService.disassociateBle(
-                            //     vehicleEntry.vehicleData.associationId,
-                            //     vehicleEntry.vehicleData.macAddress);
+                            BleBackgroundService.disconnectDevice(
+                                vehicle.device);
 
-                            getVehicles();
+                            //getVehicles();
                           },
                         ),
                       );
                     }),
                   );
                 }),
-            Text(eventData),
           ],
         ));
   }

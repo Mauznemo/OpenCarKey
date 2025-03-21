@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-import '../services/ble_service.dart';
+import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
+import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import 'scan_dialog.dart';
 
@@ -137,20 +138,20 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   final connectedDevice = await showDialog(
                     context: context,
                     builder: (context) => const ScanDialog(),
-                  ) as BluetoothDevice?;
+                  ) as BleDevice?;
 
                   print(connectedDevice);
 
                   if (connectedDevice == null)
                     return print('No device connected');
 
-                  BleService.sendMessage(
+                  BleBackgroundService.sendMessage(
                       connectedDevice, 'AUTH:${pinController.text.trim()}');
 
                   VehicleStorage.addVehicle(
                     VehicleData(
                       name: vehicleNameController.text.trim(),
-                      macAddress: connectedDevice.remoteId.toString(),
+                      macAddress: connectedDevice.macAddress,
                       pin: pinController.text.trim(),
                       hasTrunkUnlock: hasTrunkUnlock,
                       hasEngineStart: hasEngineStart,
