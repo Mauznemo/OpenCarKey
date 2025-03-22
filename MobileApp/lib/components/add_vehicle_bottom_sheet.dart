@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/ble_background_service.dart';
+import '../services/ble_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
@@ -133,6 +134,8 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   isValid = formKey.currentState!.validate() == true;
 
                   if (!isValid) return;
+
+                  await BleService.requestBluetoothPermissions();
 
                   final connectedDevice = await showDialog(
                     context: context,

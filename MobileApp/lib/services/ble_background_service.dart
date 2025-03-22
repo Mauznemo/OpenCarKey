@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
@@ -31,6 +32,8 @@ class BleBackgroundService {
 
   // This should be in your main.dart before runApp
   static Future<void> initializeService() async {
+    await Permission.notification.request();
+
     final service = FlutterBackgroundService();
 
     // Configure local notifications
