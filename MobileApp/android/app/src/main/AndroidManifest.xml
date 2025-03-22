@@ -18,9 +18,9 @@
     <uses-feature android:name="android.software.companion_device_setup"/>
 
     <application
-        android:label="open_car_key_app"
+        android:label="Open Car Key"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"

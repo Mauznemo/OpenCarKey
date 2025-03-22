@@ -3,8 +3,19 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class BleService {
+  static Future<void> requestBluetoothPermissions() async {
+    if (await Permission.bluetoothScan.request().isGranted &&
+        await Permission.bluetoothConnect.request().isGranted &&
+        await Permission.locationWhenInUse.request().isGranted) {
+      print("All Bluetooth permissions granted");
+    } else {
+      print("Bluetooth permissions denied");
+    }
+  }
+
   static Future<bool> scanForDevices() async {
     try {
       await FlutterBluePlus.adapterState
@@ -37,8 +48,6 @@ class BleService {
       await device.connect(autoConnect: true, mtu: null).catchError((e) {
         print('Connection error: $e');
       });
-
-      if (!device.isConnected) return null;
 
       print('Connected to device: ${device.advName}');
 

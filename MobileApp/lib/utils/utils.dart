@@ -25,7 +25,11 @@ Future<void> initializeBle() async {
   }
 
   if (!kIsWeb && Platform.isAndroid) {
-    await FlutterBluePlus.turnOn();
+    try {
+      await FlutterBluePlus.turnOn();
+    } on Exception catch (e) {
+      print('Error while turning on Bluetooth: $e');
+    }
   }
 
   FlutterBluePlus.setOptions(restoreState: true);

@@ -9,7 +9,11 @@ OpenCarKey is an open source project to make your own DIY remote car key or keyl
 - Support for multiple vehicles
 - ESP32 counterpart to the app
 
-[Demo video of current sate](https://www.instagram.com/reel/C-vFoHECqch/?utm_source=ig_web_copy_link&igsh=MzRlODBiNWFlZA==)
+<div style="display: flex; gap: 10px;">
+  <img src="Docs/Images/screenshot_home.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_edit.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_settings.png" width="200" height="auto">
+</div>
 
 ### Planned
 - Also support/fully switch to ESP32 instead of Arduino Nano

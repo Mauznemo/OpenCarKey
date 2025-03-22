@@ -221,6 +221,7 @@ Communication protocol between ESP and App.
 | `PROX_KEY_ON`                                  | None                               |
 | `PROX_KEY_OFF`                                 | None                               |
 | `RSSI_TRIG:{Rssi float, Rssi dead zone float}` | None                               |
+| `PROX_COOLD:{Proximity cooldown float in min}` | None                               |
 | `RSSI`                                         | `RSSI:{Rssi float}` can take 500ms |
 
 `RSSI_TRIG:` sets the **rssi strength** where proximity key will unlock and the **zone** (in rough meters) where nothing will happen. Eg. 5m: After the car was locked you have to get around 5m closer to it to unlock again. This is to prevent rapid locking and unlocking if you are at the exact trigger distance

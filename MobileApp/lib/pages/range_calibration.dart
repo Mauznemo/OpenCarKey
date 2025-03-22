@@ -131,10 +131,22 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
                     Text(
                         'Now go away from you vehicle until you are at the distance where proximity key should unlock and lock.',
                         style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 20),
+                    Text(
+                        '(Please keep in mind that that objects in between you and the vehicle also effect the signal strength)',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey[600])),
                     const SizedBox(height: 50),
                     Text(
                         'Current signal strength: ${triggerStrength.toStringAsFixed(2)} dBm'),
                     const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(
+                          '(This is the unlock strength, lock strength is calculated on the dead zone you set, meaning it is further away)',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey[600])),
+                    ),
                     FilledButton(
                         onPressed: () async {
                           await prefs.setDouble(
@@ -144,7 +156,7 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
                           setState(() {});
                           Navigator.pop(context);
                         },
-                        child: Text('Set distance'))
+                        child: Text('Set as trigger strength'))
                   ])
           ],
         ),
