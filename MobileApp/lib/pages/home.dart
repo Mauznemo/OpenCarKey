@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
@@ -19,9 +20,18 @@ class _HomePageState extends State<HomePage> {
   final FlutterBackgroundService service = FlutterBackgroundService();
   List<Vehicle> vehicles = [];
 
-  late String eventData = '--';
+  late SharedPreferences prefs;
+  bool proximityKey = false;
 
   final List<String> notAuthenticatedDevices = [];
+
+  void loadPrefs() async {
+    prefs = await SharedPreferences.getInstance();
+
+    proximityKey = prefs.getBool('proximityKey') ?? false;
+
+    setState(() {});
+  }
 
   void getVehicles() async {
     final vehiclesData = await VehicleStorage.getVehicles();
@@ -115,6 +125,7 @@ class _HomePageState extends State<HomePage> {
       }
     });
     getVehicles();
+    loadPrefs();
   }
 
   @override
@@ -135,20 +146,15 @@ class _HomePageState extends State<HomePage> {
             IconButton(
                 icon: const Icon(Icons.settings),
                 onPressed: () {
-                  Navigator.pushNamed(context, '/settings');
+                  Navigator.pushNamed(context, '/settings').then((_) {
+                    loadPrefs();
+                  });
                 }),
           ],
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () async {
-            // await _requestPermission();
             await AddVehicleBottomSheet.showBottomSheet(context);
-            //BleService.associateBle();
-            /*final NativeSharedPreferences prefs = await _prefs;
-              await prefs.reload();
-              _event =
-                  prefs.getString('device_mac_address') ?? 'Not associated';
-              setState(() {});*/
             getVehicles();
           },
           child: const Icon(Icons.add),
@@ -156,6 +162,30 @@ class _HomePageState extends State<HomePage> {
         body: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Switch(
+                    value: proximityKey,
+                    onChanged: (value) {
+                      prefs.setBool('proximityKey', value);
+                      BleBackgroundService.setProximityKey(value);
+
+                      setState(() {
+                        proximityKey = value;
+                      });
+                    },
+                  ),
+                  SizedBox(width: 10),
+                  const Text(
+                    'Proximity Key',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+            Spacer(),
             ListView.builder(
                 shrinkWrap: true,
                 itemCount: vehicles.length,
@@ -350,6 +380,7 @@ class _HomePageState extends State<HomePage> {
                     }),
                   );
                 }),
+            Spacer(),
           ],
         ));
   }
