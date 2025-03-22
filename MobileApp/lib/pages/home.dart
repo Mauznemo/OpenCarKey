@@ -3,6 +3,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/add_vehicle_bottom_sheet.dart';
+import '../components/disable_for_time_widget.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
 import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
@@ -124,6 +125,14 @@ class _HomePageState extends State<HomePage> {
         getConnectedDevices();
       }
     });
+    service.on('proximity_key_enabled').listen((event) {
+      if (event != null) {
+        print('Proximity key enabled: $event');
+        setState(() {
+          proximityKey = true;
+        });
+      }
+    });
     getVehicles();
     loadPrefs();
   }
@@ -182,6 +191,22 @@ class _HomePageState extends State<HomePage> {
                     'Proximity Key',
                     style: TextStyle(fontSize: 16),
                   ),
+                  Spacer(),
+                  OutlinedButton(
+                    onPressed: () {
+                      DisableForTimerWidget.showTimeInputDialog(context)
+                          .then((disable) {
+                        if (!disable) return;
+                        prefs.setBool('proximityKey', false);
+                        BleBackgroundService.setProximityKey(false);
+
+                        setState(() {
+                          proximityKey = false;
+                        });
+                      });
+                    },
+                    child: Text('Disable for'),
+                  )
                 ],
               ),
             ),

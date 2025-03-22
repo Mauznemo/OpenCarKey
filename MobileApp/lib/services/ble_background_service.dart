@@ -22,6 +22,8 @@ class BleBackgroundService {
   static final ValueNotifier<MessageData> _onMessageReceived =
       ValueNotifier<MessageData>(MessageData('', ''));
   static List<StreamSubscription?> _subscriptions = [];
+  static DateTime? _enableProximityKeyAt = null;
+  static Timer? _periodicTimer;
   static final FlutterBackgroundService _service = FlutterBackgroundService();
   static late SharedPreferences _prefs;
   static bool _proximityKeyEnabled = false;
@@ -117,6 +119,11 @@ class BleBackgroundService {
     _vibrate = _prefs.getBool('vibrate') ?? true;
     _proximityCooldown = _prefs.getDouble('proximityCooldown') ?? 1;
 
+    //TODO: make sure this doesn't drain the battery
+    _periodicTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+      _checkProximityTime(service);
+    });
+
     service.on('set_proximity_key').listen((event) async {
       if (event == null) return;
       bool enabled = event['enabled'];
@@ -135,6 +142,13 @@ class BleBackgroundService {
               'PROX_COOLD:${_proximityCooldown.toStringAsFixed(2)}');
         }
       }
+    });
+
+    service.on('enable_proximity_key_at').listen((event) async {
+      if (event == null) return;
+      DateTime time = DateTime.parse(event['time']);
+      _enableProximityKeyAt = time;
+      print('Enabling proximity key at ${time.toString()}');
     });
 
     service.on('set_proximity_cooldown').listen((event) async {
@@ -413,6 +427,18 @@ class BleBackgroundService {
     }
   }
 
+  static void _checkProximityTime(ServiceInstance service) {
+    if (_enableProximityKeyAt != null &&
+        DateTime.now().isAfter(_enableProximityKeyAt!)) {
+      print('Enabling proximity key');
+      //setProximityKey(true); //TODO: implement this
+      service
+          .invoke('proximity_key_enabled'); //TODO: is not received in home.dart
+
+      _enableProximityKeyAt = null;
+    }
+  }
+
   static void _updateNotification(
       FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin,
       String title,
@@ -481,6 +507,10 @@ class BleBackgroundService {
 
   static void setProximityCooldown(double cooldown) {
     _service.invoke('set_proximity_cooldown', {'cooldown': cooldown});
+  }
+
+  static void enableProximityKeyAt(DateTime time) {
+    _service.invoke('enable_proximity_key_at', {'time': time.toString()});
   }
 
   static void setVibrate(bool enabled) {
