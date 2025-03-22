@@ -16,7 +16,6 @@ OpenCarKey is an open source project to make your own DIY remote car key or keyl
 </div>
 
 ### Planned
-- Also support/fully switch to ESP32 instead of Arduino Nano
 - Hardware keyfob using an ESP32 as alternative for the phone
 - Get at least some support for IOS (as far as possible with is limitations)
 - Ability to add multiple vehicles and switch between them
@@ -27,7 +26,7 @@ OpenCarKey is an open source project to make your own DIY remote car key or keyl
 Clone the repo and open the `MobileApp` directory in Android Studio or your preferred code editor that supports Flutter.
 
 ### ESP32 Lock Controller
-Clone the repo and open `Firmware/LockController/ESP32` with [PlatformIO](https://platformio.org/platformio-ide).
+Clone the repo and open `Firmware/LockController/` with [PlatformIO](https://platformio.org/platformio-ide).
 Now you can add custom code for locking, unlocking etc. more info [here](Docs/LockController.md#custom-code-for-locking-unlocking-etc).
 Then you can open the `platformio.ini` file and change `LOCK_PIN` to any password you want.
 Now you can connect you ESP32 and upload the code and then connect it with the app.
