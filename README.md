@@ -2,10 +2,13 @@
 
 OpenCarKey is an open source project to make your own DIY remote car key or keyless entry.
 
+>[!CAUTION]
+>**Disclaimer:** This project is currently in the development phase, so it my still contain some bugs.
+
 ## Features:
 ### Current
 - App to lock, unlock, open the trunk or remote start the engine from your phone
-- Proximity key to auto lock and unlock your car if you are near it
+- Proximity key (with customizable trigger range) to auto lock and unlock your car if you are near it
 - Support for multiple vehicles
 - ESP32 counterpart to the app
 
@@ -16,10 +19,10 @@ OpenCarKey is an open source project to make your own DIY remote car key or keyl
 </div>
 
 ### Planned
-- Hardware keyfob using an ESP32 as alternative for the phone
+- Hardware keyfob using an ESP32 as alternative for the phone (one keyfob for all your cars using OpenCarKey)
 - Get at least some support for IOS (as far as possible with is limitations)
-- Ability to add multiple vehicles and switch between them
 - Auto save parking location if car gets out of range
+- Home screen widget and Android quick settings tiles
 
 ## Getting Started
 ### Mobile App
