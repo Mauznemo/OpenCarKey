@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../components/custom_dropdown_button.dart';
 import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_device.dart';
@@ -103,9 +104,8 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
                 'Select a vehicle to use as reference (needs to be connected)',
               ),
             ),
-            DropdownButton<Vehicle>(
+            CustomDropdownButton<Vehicle>(
               value: selectedVehicle,
-              isExpanded: true,
               hint: const Text('Select a device'),
               onChanged: (Vehicle? newValue) {
                 setState(() {

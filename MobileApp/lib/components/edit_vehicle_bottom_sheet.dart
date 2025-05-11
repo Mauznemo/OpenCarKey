@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/vehicle.dart';
+import 'custom_text_form_field.dart';
 
 typedef EditVehicleBottomSheetCallback = void Function(Vehicle vehicle);
 
@@ -77,34 +78,28 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
             ),
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: TextFormField(
+              child: CustomTextFormField(
                 controller: vehicleNameController,
+                labelText: 'Vehicle Name',
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a vehicle name';
                   }
                   return null;
                 },
-                decoration: const InputDecoration(
-                  border: UnderlineInputBorder(),
-                  labelText: 'Vehicle Name',
-                ),
               ),
             ),
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: TextFormField(
+              child: CustomTextFormField(
                 controller: pinController,
+                labelText: 'Pin',
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a pin';
                   }
                   return null;
                 },
-                decoration: InputDecoration(
-                  border: UnderlineInputBorder(),
-                  labelText: 'Pin',
-                ),
               ),
             ),
             Row(
