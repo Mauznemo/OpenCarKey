@@ -225,6 +225,11 @@ class _HomePageState extends State<HomePage> {
                                   style:
                                       Theme.of(context).textTheme.headlineSmall,
                                 ),
+                                SizedBox(width: 10),
+                                if (vehicle.data.noProximityKey)
+                                  Icon(
+                                    Icons.location_disabled,
+                                  ),
                                 Spacer(),
                                 if (notAuthenticatedDevices.contains(
                                     vehicle.device.macAddress.toString()))

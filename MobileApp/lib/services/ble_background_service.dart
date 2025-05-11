@@ -246,6 +246,8 @@ class BleBackgroundService {
 
       changedVehicle.device = event.device;
 
+      final bool ignoreProximityKey = changedVehicle.data.noProximityKey;
+
       if (event.connectionState == BluetoothConnectionState.connected) {
         // Give the connection a moment to stabilize
         await Future.delayed(Duration(milliseconds: 500));
@@ -269,7 +271,7 @@ class BleBackgroundService {
         _subscriptions
             .add(notificationSubscription); //TODO: remove if no longer needed
 
-        if (_proximityKeyEnabled) {
+        if (_proximityKeyEnabled && !ignoreProximityKey) {
           _updateNotification(
               flutterLocalNotificationsPlugin,
               'Connected to ${changedVehicle.data.name}',
@@ -285,7 +287,7 @@ class BleBackgroundService {
         await Future.delayed(Duration(milliseconds: 200));
         await BleService.sendMessage(changedVehicle.device, 'SEND_DATA');
 
-        if (_proximityKeyEnabled) {
+        if (_proximityKeyEnabled && !ignoreProximityKey) {
           await Future.delayed(Duration(milliseconds: 200));
           await BleService.sendMessage(changedVehicle.device,
               'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}'); //
@@ -299,7 +301,7 @@ class BleBackgroundService {
         await BleDeviceStorage.addDevice(changedVehicle.device.remoteId.str);
       } else if (event.connectionState ==
           BluetoothConnectionState.disconnected) {
-        if (_proximityKeyEnabled) {
+        if (_proximityKeyEnabled && !ignoreProximityKey) {
           _updateNotification(
               flutterLocalNotificationsPlugin,
               'Disconnected from ${changedVehicle.data.name} (Proxy Locked)',
@@ -314,7 +316,8 @@ class BleBackgroundService {
         //The device was disconnected without having time to say it locked, so let the user know it was locked here
         if (_proximityKeyEnabled &&
             _vibrate &&
-            !_proxyLocked.contains(event.device.remoteId.str)) {
+            !_proxyLocked.contains(event.device.remoteId.str) &&
+            !ignoreProximityKey) {
           _vibrateLongTwice();
         }
 

@@ -40,6 +40,7 @@ class VehicleData {
   final String pin;
   final bool hasTrunkUnlock;
   final bool hasEngineStart;
+  final bool noProximityKey;
 
   VehicleData({
     required this.name,
@@ -47,6 +48,7 @@ class VehicleData {
     required this.pin,
     required this.hasTrunkUnlock,
     required this.hasEngineStart,
+    this.noProximityKey = false,
   });
 
   factory VehicleData.fromJson(Map<String, dynamic> json) {
@@ -56,6 +58,7 @@ class VehicleData {
       pin: json['pin'],
       hasTrunkUnlock: json['hasTrunkUnlock'],
       hasEngineStart: json['hasEngineStart'],
+      noProximityKey: json['noProximityKey'] ?? false,
     );
   }
 
@@ -66,6 +69,7 @@ class VehicleData {
       'pin': pin,
       'hasTrunkUnlock': hasTrunkUnlock,
       'hasEngineStart': hasEngineStart,
+      'noProximityKey': noProximityKey,
     };
   }
 }

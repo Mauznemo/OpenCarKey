@@ -99,9 +99,12 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   },
                 ),
                 SizedBox(width: 10),
-                const Text(
-                  'Has Trunk Unlock',
-                  style: TextStyle(fontSize: 16),
+                SizedBox(
+                  width: 180,
+                  child: const Text(
+                    'Has Trunk Unlock',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ],
             ),
@@ -115,9 +118,12 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   },
                 ),
                 SizedBox(width: 10),
-                const Text(
-                  'Has Remote Engine Start',
-                  style: TextStyle(fontSize: 16),
+                SizedBox(
+                  width: 180,
+                  child: const Text(
+                    'Has Remote Engine Start',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ],
             ),

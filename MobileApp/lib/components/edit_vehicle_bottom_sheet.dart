@@ -36,6 +36,8 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
   bool hasTrunkUnlock = false;
   bool hasEngineStart = false;
 
+  bool noProximityKey = false;
+
   bool isValid = true;
 
   @override
@@ -45,6 +47,7 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
     pinController.text = widget.vehicle.data.pin;
     hasTrunkUnlock = widget.vehicle.data.hasTrunkUnlock;
     hasEngineStart = widget.vehicle.data.hasEngineStart;
+    noProximityKey = widget.vehicle.data.noProximityKey;
   }
 
   @override
@@ -114,9 +117,12 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                   },
                 ),
                 SizedBox(width: 10),
-                const Text(
-                  'Has Trunk Unlock',
-                  style: TextStyle(fontSize: 16),
+                SizedBox(
+                  width: 180,
+                  child: const Text(
+                    'Has Trunk Unlock',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ],
             ),
@@ -132,9 +138,33 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                   },
                 ),
                 SizedBox(width: 10),
-                const Text(
-                  'Has Remote Engine Start',
-                  style: TextStyle(fontSize: 16),
+                SizedBox(
+                  width: 180,
+                  child: const Text(
+                    'Has Remote Engine Start',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Switch(
+                  value: noProximityKey,
+                  onChanged: (value) {
+                    setState(() {
+                      noProximityKey = value;
+                    });
+                  },
+                ),
+                SizedBox(width: 10),
+                SizedBox(
+                  width: 180,
+                  child: const Text(
+                    'Ignore Proximity Key',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ],
             ),
@@ -155,7 +185,8 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                       macAddress: widget.vehicle.data.macAddress,
                       pin: pinController.text,
                       hasTrunkUnlock: hasTrunkUnlock,
-                      hasEngineStart: hasEngineStart));
+                      hasEngineStart: hasEngineStart,
+                      noProximityKey: noProximityKey));
                   vehicleNameController.clear();
                   pinController.clear();
                   if (context.mounted) Navigator.pop(context);
