@@ -1,8 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+
+import '../components/image_crop_screen.dart';
 
 class ImageUtils {
   static Future<File?> saveImagePermanently(File tempImage) async {
@@ -36,7 +40,7 @@ class ImageUtils {
     }
   }
 
-  static Future<File?> pickImageFromGallery() async {
+  static Future<File?> pickImageFromGallery(BuildContext context) async {
     final ImagePicker picker = ImagePicker();
     try {
       final XFile? image = await picker.pickImage(
@@ -45,15 +49,25 @@ class ImageUtils {
         maxHeight: 1800,
         imageQuality: 80,
       );
-
       if (image != null) {
-        final tempImage = File(image.path);
-        final savedImage = await saveImagePermanently(tempImage);
+        final Uint8List imageData = await image.readAsBytes();
 
-        if (savedImage != null) {
-          return savedImage;
-        }
+        final Uint8List? croppedData = await Navigator.push<Uint8List>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CropImageScreen(imageData: imageData),
+          ),
+        );
+
+        if (croppedData == null) return null;
+
+        final dir = await getApplicationDocumentsDirectory();
+        final file = File(
+            '${dir.path}/cropped_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await file.writeAsBytes(croppedData);
+        return file;
       }
+
       return null;
     } catch (e) {
       print('Error picking image: $e');
@@ -61,7 +75,7 @@ class ImageUtils {
     }
   }
 
-  static Future<File?> pickImageFromCamera() async {
+  static Future<File?> pickImageFromCamera(BuildContext context) async {
     final ImagePicker picker = ImagePicker();
     try {
       final XFile? image = await picker.pickImage(
@@ -72,12 +86,22 @@ class ImageUtils {
       );
 
       if (image != null) {
-        final tempImage = File(image.path);
-        final savedImage = await saveImagePermanently(tempImage);
+        final Uint8List imageData = await image.readAsBytes();
 
-        if (savedImage != null) {
-          return savedImage;
-        }
+        final Uint8List? croppedData = await Navigator.push<Uint8List>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CropImageScreen(imageData: imageData),
+          ),
+        );
+
+        if (croppedData == null) return null;
+
+        final dir = await getApplicationDocumentsDirectory();
+        final file = File(
+            '${dir.path}/cropped_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await file.writeAsBytes(croppedData);
+        return file;
       }
       return null;
     } catch (e) {

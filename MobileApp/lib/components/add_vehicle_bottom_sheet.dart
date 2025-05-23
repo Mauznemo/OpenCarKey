@@ -50,7 +50,8 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
   void _showImageSourceOptions() {
     showModalBottomSheet(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext mContext) {
+        final rootContext = context;
         return SafeArea(
           child: Wrap(
             children: [
@@ -58,9 +59,10 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                 leading: Icon(Icons.photo_library),
                 title: Text('Gallery'),
                 onTap: () async {
-                  Navigator.pop(context);
+                  Navigator.pop(mContext);
                   await ImageUtils.deleteImage(imagePath);
-                  _selectedImage = await ImageUtils.pickImageFromGallery();
+                  _selectedImage =
+                      await ImageUtils.pickImageFromGallery(rootContext);
                   setState(() {});
                   imagePath = _selectedImage?.path ?? '';
                 },
@@ -71,7 +73,8 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                 onTap: () async {
                   Navigator.pop(context);
                   await ImageUtils.deleteImage(imagePath);
-                  _selectedImage = await ImageUtils.pickImageFromCamera();
+                  _selectedImage =
+                      await ImageUtils.pickImageFromCamera(rootContext);
                   setState(() {});
                   imagePath = _selectedImage?.path ?? '';
                 },
