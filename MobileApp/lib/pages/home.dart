@@ -10,6 +10,7 @@ import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
+import '../utils/image_utils.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -38,13 +39,16 @@ class _HomePageState extends State<HomePage> {
   void getVehicles() async {
     final vehiclesData = await VehicleStorage.getVehicles();
 
+    List<Vehicle> newVehicles = [];
+    for (final vehicleData in vehiclesData) {
+      newVehicles.add(Vehicle(
+        device: BleDevice(macAddress: vehicleData.macAddress),
+        data: vehicleData,
+        imageFile: await ImageUtils.loadSavedImage(vehicleData.imagePath),
+      ));
+    }
     setState(() {
-      vehicles = vehiclesData
-          .map((vehicle) => Vehicle(
-                device: BleDevice(macAddress: vehicle.macAddress),
-                data: vehicle,
-              ))
-          .toList();
+      vehicles = newVehicles;
     });
 
     getConnectedDevices();
@@ -201,36 +205,37 @@ class _HomePageState extends State<HomePage> {
                           borderRadius: BorderRadius.circular(20.0),
                           child: Stack(children: [
                             // Faded image background
-                            Positioned.fill(
-                              child: ShaderMask(
-                                shaderCallback: (bounds) => LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [Colors.white, Colors.transparent],
-                                  stops: [0.1, 0.9],
-                                ).createShader(bounds),
-                                blendMode: BlendMode.dstIn,
-                                child: ImageFiltered(
-                                  imageFilter: ImageFilter.blur(
-                                    sigmaX: 3.0,
-                                    sigmaY: 3.0,
-                                  ),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      image: DecorationImage(
-                                        image: AssetImage('assets/car.jpg'),
-                                        fit: BoxFit.cover,
-                                        colorFilter: ColorFilter.mode(
-                                          Colors.black.withOpacity(
-                                              0.4), // Adjust opacity to control darkness
-                                          BlendMode.darken,
+                            if (vehicle.imageFile != null)
+                              Positioned.fill(
+                                child: ShaderMask(
+                                  shaderCallback: (bounds) => LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [Colors.white, Colors.transparent],
+                                    stops: [0.1, 0.9],
+                                  ).createShader(bounds),
+                                  blendMode: BlendMode.dstIn,
+                                  child: ImageFiltered(
+                                    imageFilter: ImageFilter.blur(
+                                      sigmaX: 3.0,
+                                      sigmaY: 3.0,
+                                    ),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        image: DecorationImage(
+                                          image: FileImage(vehicle.imageFile!),
+                                          fit: BoxFit.cover,
+                                          colorFilter: ColorFilter.mode(
+                                            Colors.black.withOpacity(
+                                                0.4), // Adjust opacity to control darkness
+                                            BlendMode.darken,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
                             ListTile(
                               onLongPress: () async {
                                 await EditVehicleBottomSheet.showBottomSheet(
