@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/vehicle.dart';
+import '../utils/image_utils.dart';
 import 'custom_text_form_field.dart';
 
 typedef EditVehicleBottomSheetCallback = void Function(Vehicle vehicle);
@@ -33,12 +36,21 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
   final vehicleNameController = TextEditingController();
   final pinController = TextEditingController();
 
+  File? _selectedImage;
+  String imagePath = '';
+
   bool hasTrunkUnlock = false;
   bool hasEngineStart = false;
 
   bool noProximityKey = false;
 
   bool isValid = true;
+
+  Future<void> loadImage() async {
+    _selectedImage =
+        await ImageUtils.loadSavedImage(widget.vehicle.data.imagePath);
+    setState(() {});
+  }
 
   @override
   void initState() {
@@ -48,6 +60,9 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
     hasTrunkUnlock = widget.vehicle.data.hasTrunkUnlock;
     hasEngineStart = widget.vehicle.data.hasEngineStart;
     noProximityKey = widget.vehicle.data.noProximityKey;
+    imagePath = widget.vehicle.data.imagePath;
+
+    loadImage();
   }
 
   @override
@@ -55,6 +70,45 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
     vehicleNameController.dispose();
     pinController.dispose();
     super.dispose();
+  }
+
+  void _showImageSourceOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext mContext) {
+        final rootContext = context;
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Gallery'),
+                onTap: () async {
+                  Navigator.pop(mContext);
+                  await ImageUtils.deleteImage(imagePath);
+                  _selectedImage =
+                      await ImageUtils.pickImageFromGallery(rootContext);
+                  setState(() {});
+                  imagePath = _selectedImage?.path ?? '';
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.camera_alt),
+                title: Text('Camera'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await ImageUtils.deleteImage(imagePath);
+                  _selectedImage =
+                      await ImageUtils.pickImageFromCamera(rootContext);
+                  setState(() {});
+                  imagePath = _selectedImage?.path ?? '';
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -103,6 +157,106 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                   }
                   return null;
                 },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                width: double.infinity,
+                height: 100,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: _selectedImage != null
+                    ? Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(50),
+                            child: Image.file(
+                              _selectedImage!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 10),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withAlpha(150),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  onPressed: () => _showImageSourceOptions(),
+                                  icon: Icon(Icons.edit,
+                                      color: Colors.white, size: 25),
+                                  padding: EdgeInsets.all(4),
+                                  constraints: BoxConstraints(
+                                      minWidth: 32, minHeight: 32),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withAlpha(150),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  onPressed: () async {
+                                    await ImageUtils.deleteImage(imagePath);
+                                    imagePath = '';
+                                    _selectedImage = null;
+                                    setState(() {});
+                                  },
+                                  icon: Icon(Icons.delete,
+                                      color: Colors.white, size: 25),
+                                  padding: EdgeInsets.all(4),
+                                  constraints: BoxConstraints(
+                                      minWidth: 32, minHeight: 32),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : InkWell(
+                        onTap: _showImageSourceOptions,
+                        borderRadius: BorderRadius.circular(50),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.add_a_photo,
+                                size: 30,
+                                color: Colors.grey,
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                'No background image selected',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
               ),
             ),
             Row(
@@ -186,7 +340,9 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                       pin: pinController.text,
                       hasTrunkUnlock: hasTrunkUnlock,
                       hasEngineStart: hasEngineStart,
-                      noProximityKey: noProximityKey));
+                      noProximityKey: noProximityKey,
+                      imagePath: imagePath));
+
                   vehicleNameController.clear();
                   pinController.clear();
                   if (context.mounted) Navigator.pop(context);
