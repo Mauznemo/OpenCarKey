@@ -162,6 +162,7 @@ class _HomePageState extends State<HomePage> {
           onPressed: () async {
             await AddVehicleBottomSheet.showBottomSheet(context);
             getVehicles();
+            ImageUtils.deleteUnusedImages();
           },
           child: const Icon(Icons.add),
         ),
@@ -241,6 +242,7 @@ class _HomePageState extends State<HomePage> {
                                 await EditVehicleBottomSheet.showBottomSheet(
                                     context, vehicle);
                                 getVehicles();
+                                ImageUtils.deleteUnusedImages();
                                 setState(() {});
                               },
                               shape: RoundedRectangleBorder(

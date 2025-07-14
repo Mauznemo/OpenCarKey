@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import '../components/image_crop_screen.dart';
+import '../services/vehicle_service.dart';
 
 class ImageUtils {
   static Future<File?> saveImagePermanently(File tempImage) async {
@@ -22,6 +23,23 @@ class ImageUtils {
     } catch (e) {
       print('Error saving image: $e');
       return null;
+    }
+  }
+
+  static Future<void> deleteUnusedImages() async {
+    final vehiclesData = await VehicleStorage.getVehicles();
+    final directory = await getApplicationDocumentsDirectory();
+
+    final List<File> imageFiles = directory
+        .listSync()
+        .where((item) => item.path.endsWith('.jpg'))
+        .map((item) => File(item.path))
+        .toList();
+
+    for (var imageFile in imageFiles) {
+      if (!vehiclesData.any((vehicle) => vehicle.imagePath == imageFile.path)) {
+        await deleteImage(imageFile.path);
+      }
     }
   }
 
