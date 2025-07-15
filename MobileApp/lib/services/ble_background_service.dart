@@ -39,10 +39,11 @@ class BleBackgroundService {
     // Configure local notifications
     // For Android notification channel
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'ble_connect_service', // id
-      'BLE Background Service', // title
-      description: 'Background service for BLE proximity key',
-      importance: Importance.low,
+      'background_service', // id
+      'Background Service', // title
+      description: 'Background service for proximity key',
+      importance: Importance.min,
+      showBadge: false,
     );
 
     final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -62,7 +63,7 @@ class BleBackgroundService {
         autoStart: true,
         autoStartOnBoot: true,
         isForegroundMode: true,
-        notificationChannelId: 'ble_connect_service',
+        notificationChannelId: 'background_service',
         initialNotificationTitle: 'Initializing',
         initialNotificationContent: 'Initializing BLE Service...',
         foregroundServiceNotificationId: 888,
@@ -426,7 +427,7 @@ class BleBackgroundService {
       message,
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'ble_connect_service',
+          'background_service',
           'Background service for BLE auto connect',
           icon: 'ic_launcher_foreground',
           ongoing: true,
