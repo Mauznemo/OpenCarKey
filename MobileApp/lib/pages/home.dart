@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +10,7 @@ import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
+import '../utils/image_utils.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -36,13 +39,16 @@ class _HomePageState extends State<HomePage> {
   void getVehicles() async {
     final vehiclesData = await VehicleStorage.getVehicles();
 
+    List<Vehicle> newVehicles = [];
+    for (final vehicleData in vehiclesData) {
+      newVehicles.add(Vehicle(
+        device: BleDevice(macAddress: vehicleData.macAddress),
+        data: vehicleData,
+        imageFile: await ImageUtils.loadSavedImage(vehicleData.imagePath),
+      ));
+    }
     setState(() {
-      vehicles = vehiclesData
-          .map((vehicle) => Vehicle(
-                device: BleDevice(macAddress: vehicle.macAddress),
-                data: vehicle,
-              ))
-          .toList();
+      vehicles = newVehicles;
     });
 
     getConnectedDevices();
@@ -158,6 +164,7 @@ class _HomePageState extends State<HomePage> {
           onPressed: () async {
             await AddVehicleBottomSheet.showBottomSheet(context);
             getVehicles();
+            ImageUtils.deleteUnusedImages();
           },
           child: const Icon(Icons.add),
         ),
@@ -197,95 +204,103 @@ class _HomePageState extends State<HomePage> {
                     padding: const EdgeInsets.all(8.0),
                     child: Builder(builder: (context) {
                       //Builder needed or else colorScheme.secondaryContainer will be the fallback color
-                      return ListTile(
-                        onLongPress: () async {
-                          await EditVehicleBottomSheet.showBottomSheet(
-                              context, vehicle);
-                          getVehicles();
-                          setState(() {});
-                        },
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20.0)),
-                        tileColor:
-                            Theme.of(context).colorScheme.secondaryContainer,
-                        title: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  vehicle.device.isConnected
-                                      ? Icons.bluetooth_audio
-                                      : Icons.bluetooth_disabled_rounded,
-                                  color: vehicle.device.isConnected
-                                      ? Colors.green
-                                      : Colors.red,
-                                ),
-                                SizedBox(width: 10),
-                                Text(
-                                  vehicle.data.name,
-                                  style:
-                                      Theme.of(context).textTheme.headlineSmall,
-                                ),
-                                SizedBox(width: 10),
-                                if (vehicle.data.noProximityKey)
-                                  Icon(
-                                    Icons.location_disabled,
-                                  ),
-                                Spacer(),
-                                if (notAuthenticatedDevices.contains(
-                                    vehicle.device.macAddress.toString()))
-                                  Icon(
-                                    Icons.pin,
-                                    color: Colors.amber,
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.only(left: 8.0, bottom: 4.0),
-                              child: Text(
-                                  'Mac Address: ${vehicle.data.macAddress}',
-                                  style: const TextStyle(fontSize: 12)),
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 5),
-                                  child: Ink(
-                                    decoration: ShapeDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withAlpha(50),
-                                      shape: CircleBorder(),
+                      return ClipRRect(
+                          borderRadius: BorderRadius.circular(20.0),
+                          child: Stack(children: [
+                            // Faded image background
+                            if (vehicle.imageFile != null)
+                              Positioned.fill(
+                                child: ShaderMask(
+                                  shaderCallback: (bounds) => LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [Colors.white, Colors.transparent],
+                                    stops: [0.1, 0.9],
+                                  ).createShader(bounds),
+                                  blendMode: BlendMode.dstIn,
+                                  child: ImageFiltered(
+                                    imageFilter: ImageFilter.blur(
+                                      sigmaX: 3.0,
+                                      sigmaY: 3.0,
                                     ),
-                                    child: IconButton(
-                                      icon: Icon(
-                                          vehicle.doorsLocked
-                                              ? Icons.lock
-                                              : Icons.lock_open,
-                                          size: 30),
-                                      onPressed: vehicle.device.isConnected
-                                          ? () {
-                                              BleBackgroundService.sendMessage(
-                                                vehicle.device,
-                                                vehicle.doorsLocked
-                                                    ? 'UNLOCK'
-                                                    : 'LOCK',
-                                              );
-                                            }
-                                          : null,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        image: DecorationImage(
+                                          image: FileImage(vehicle.imageFile!),
+                                          fit: BoxFit.cover,
+                                          colorFilter: ColorFilter.mode(
+                                            Colors.black.withOpacity(
+                                                0.4), // Adjust opacity to control darkness
+                                            BlendMode.darken,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                                vehicle.data.hasTrunkUnlock
-                                    ? Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 5),
+                              ),
+                            ListTile(
+                              onLongPress: () async {
+                                await EditVehicleBottomSheet.showBottomSheet(
+                                    context, vehicle);
+                                getVehicles();
+                                ImageUtils.deleteUnusedImages();
+                                setState(() {});
+                              },
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20.0)),
+                              tileColor: Theme.of(context)
+                                  .colorScheme
+                                  .secondaryContainer,
+                              title: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        vehicle.device.isConnected
+                                            ? Icons.bluetooth_audio
+                                            : Icons.bluetooth_disabled_rounded,
+                                        color: vehicle.device.isConnected
+                                            ? Colors.green
+                                            : Colors.red,
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        vehicle.data.name,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .headlineSmall,
+                                      ),
+                                      SizedBox(width: 10),
+                                      if (vehicle.data.noProximityKey)
+                                        Icon(
+                                          Icons.location_disabled,
+                                        ),
+                                      Spacer(),
+                                      if (notAuthenticatedDevices.contains(
+                                          vehicle.device.macAddress.toString()))
+                                        Icon(
+                                          Icons.pin,
+                                          color: Colors.amber,
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                        left: 8.0, bottom: 4.0),
+                                    child: Text(
+                                        'Mac Address: ${vehicle.data.macAddress}',
+                                        style: const TextStyle(fontSize: 12)),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 5),
                                         child: Ink(
                                           decoration: ShapeDecoration(
                                             color: Theme.of(context)
@@ -295,95 +310,133 @@ class _HomePageState extends State<HomePage> {
                                             shape: CircleBorder(),
                                           ),
                                           child: IconButton(
-                                            icon: const Icon(
-                                              Icons.directions_car_outlined,
-                                              size: 30,
-                                            ),
+                                            icon: Icon(
+                                                vehicle.doorsLocked
+                                                    ? Icons.lock
+                                                    : Icons.lock_open,
+                                                size: 30),
                                             onPressed:
                                                 vehicle.device.isConnected
                                                     ? () {
                                                         BleBackgroundService
                                                             .sendMessage(
                                                           vehicle.device,
-                                                          'UNLOCK_TRUNK',
+                                                          vehicle.doorsLocked
+                                                              ? 'UNLOCK'
+                                                              : 'LOCK',
                                                         );
                                                       }
                                                     : null,
                                           ),
                                         ),
-                                      )
-                                    : Container(),
-                                vehicle.data.hasEngineStart
-                                    ? Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 5),
-                                        child: Ink(
-                                          decoration: ShapeDecoration(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                                .withAlpha(50),
-                                            shape: CircleBorder(),
-                                          ),
-                                          child: IconButton(
-                                            icon: const Icon(
-                                              Icons.restart_alt,
-                                              size: 30,
-                                            ),
-                                            onPressed:
-                                                vehicle.device.isConnected
-                                                    ? () {
-                                                        //TODO: Implement engine start
-                                                      }
-                                                    : null,
-                                          ),
-                                        ),
-                                      )
-                                    : Container(),
-                              ],
-                            ),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete),
-                          onPressed: () async {
-                            final confirmed = showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: const Text('Delete Vehicle'),
-                                content: Text(
-                                    'Are you sure you want to delete ${vehicle.data.name}?'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(true),
-                                    child: const Text('Delete'),
+                                      ),
+                                      vehicle.data.hasTrunkUnlock
+                                          ? Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 5),
+                                              child: Ink(
+                                                decoration: ShapeDecoration(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary
+                                                      .withAlpha(50),
+                                                  shape: CircleBorder(),
+                                                ),
+                                                child: IconButton(
+                                                  icon: const Icon(
+                                                    Icons
+                                                        .directions_car_outlined,
+                                                    size: 30,
+                                                  ),
+                                                  onPressed:
+                                                      vehicle.device.isConnected
+                                                          ? () {
+                                                              BleBackgroundService
+                                                                  .sendMessage(
+                                                                vehicle.device,
+                                                                'UNLOCK_TRUNK',
+                                                              );
+                                                            }
+                                                          : null,
+                                                ),
+                                              ),
+                                            )
+                                          : Container(),
+                                      vehicle.data.hasEngineStart
+                                          ? Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 5),
+                                              child: Ink(
+                                                decoration: ShapeDecoration(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary
+                                                      .withAlpha(50),
+                                                  shape: CircleBorder(),
+                                                ),
+                                                child: IconButton(
+                                                  icon: const Icon(
+                                                    Icons.restart_alt,
+                                                    size: 30,
+                                                  ),
+                                                  onPressed:
+                                                      vehicle.device.isConnected
+                                                          ? () {
+                                                              //TODO: Implement engine start
+                                                            }
+                                                          : null,
+                                                ),
+                                              ),
+                                            )
+                                          : Container(),
+                                    ],
                                   ),
                                 ],
                               ),
-                            );
-                            if (!(await confirmed)) return;
-                            print('Deleting vehicle: ${vehicle.data.name}');
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () async {
+                                  final confirmed = showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('Delete Vehicle'),
+                                      content: Text(
+                                          'Are you sure you want to delete ${vehicle.data.name}?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(true),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (!(await confirmed)) return;
+                                  print(
+                                      'Deleting vehicle: ${vehicle.data.name}');
 
-                            VehicleStorage.removeVehicle(
-                                vehicle.data.macAddress);
+                                  VehicleStorage.removeVehicle(
+                                      vehicle.data.macAddress);
 
-                            setState(() => vehicles.removeAt(index));
+                                  setState(() => vehicles.removeAt(index));
 
-                            BleBackgroundService.reloadVehicles();
+                                  BleBackgroundService.reloadVehicles();
 
-                            BleBackgroundService.disconnectDevice(
-                                vehicle.device);
+                                  BleBackgroundService.disconnectDevice(
+                                      vehicle.device);
 
-                            //getVehicles();
-                          },
-                        ),
-                      );
+                                  //getVehicles();
+                                },
+                              ),
+                            ),
+                          ]));
                     }),
                   );
                 }),
