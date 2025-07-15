@@ -75,7 +75,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   void processMessage(String macAddress, String message) {
-    if (message.startsWith('NOT_AUTH') || message.startsWith('AUTH_FAIL')) {
+    if (message.startsWith('NOT_AUTH') ||
+        message.startsWith('AUTH_FAIL') ||
+        message.startsWith('AUTH_COOLD')) {
       if (notAuthenticatedDevices.contains(macAddress)) {
         return;
       }

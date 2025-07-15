@@ -42,6 +42,9 @@ const long rssiInterval = 500;
 bool sendRssi = false;
 float proximityCooldown = 1; // in min
 unsigned long previousProximityMillis = 0;
+static int authAttempts = 0;
+static unsigned long lastAuthAttemptMillis = 0;
+const unsigned long authCooldownMillis = 10000;
 
 namespace
 {
@@ -175,15 +178,28 @@ class MyCallbacks : public BLECharacteristicCallbacks
             // Handle authentication
             if (command.startsWith("AUTH:"))
             {
+                unsigned long currentMillis = millis();
+
+                // Check if cooldown period has passed
+                if (authAttempts >= 2 && (currentMillis - lastAuthAttemptMillis) < authCooldownMillis)
+                {
+                    pCharacteristic->setValue("AUTH_COOLD");
+                    pCharacteristic->notify();
+                    return;
+                }
+
                 String receivedPin = command.substring(5);
                 if (receivedPin == LOCK_PIN)
                 {
                     isAuthenticated = true;
                     pCharacteristic->setValue("AUTH_OK");
                     pCharacteristic->notify();
+                    authAttempts = 0;
                 }
                 else
                 {
+                    authAttempts++;
+                    lastAuthAttemptMillis = currentMillis;
                     pCharacteristic->setValue("AUTH_FAIL");
                     pCharacteristic->notify();
                 }
