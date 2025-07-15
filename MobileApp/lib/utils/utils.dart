@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/ble_background_service.dart';
 
@@ -11,11 +12,16 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 
 Future<void> initializeApp() async {
   await initializeBle();
-  await initializeBackgroundService();
+  initializeBackgroundService(); //don't need to await
 }
 
 Future<void> initializeBackgroundService() async {
-  await BleBackgroundService.initializeService();
+  final prefs = await SharedPreferences.getInstance();
+  final bool backgroundServiceEnabled =
+      prefs.getBool('backgroundService') ?? true;
+  await BleBackgroundService.initializeService(
+      backgroundServiceEnabled: backgroundServiceEnabled);
+  print('Background service initialized!');
 }
 
 Future<void> initializeBle() async {

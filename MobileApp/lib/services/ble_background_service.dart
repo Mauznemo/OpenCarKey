@@ -31,7 +31,8 @@ class BleBackgroundService {
   static double _proximityCooldown = 1;
 
   // This should be in your main.dart before runApp
-  static Future<void> initializeService() async {
+  static Future<void> initializeService(
+      {required bool backgroundServiceEnabled}) async {
     await Permission.notification.request();
 
     final service = FlutterBackgroundService();
@@ -42,7 +43,7 @@ class BleBackgroundService {
       'background_service', // id
       'Background Service', // title
       description: 'Background service for proximity key',
-      importance: Importance.min,
+      importance: Importance.low,
       showBadge: false,
     );
 
@@ -61,7 +62,7 @@ class BleBackgroundService {
         onStart: onStart,
         // auto start service
         autoStart: true,
-        autoStartOnBoot: true,
+        autoStartOnBoot: backgroundServiceEnabled,
         isForegroundMode: true,
         notificationChannelId: 'background_service',
         initialNotificationTitle: 'Initializing',
@@ -74,7 +75,7 @@ class BleBackgroundService {
         // this will be executed when app is in foreground or background
         onForeground: onStart,
         // you have to enable background fetch capability on xcode project
-        onBackground: onIosBackground,
+        onBackground: backgroundServiceEnabled ? onIosBackground : null,
       ),
     );
 
@@ -117,6 +118,14 @@ class BleBackgroundService {
     _deadZone = _prefs.getDouble('deadZone') ?? 4;
     _vibrate = _prefs.getBool('vibrate') ?? true;
     _proximityCooldown = _prefs.getDouble('proximityCooldown') ?? 1;
+
+    service.on('handle_app_detached').listen((event) async {
+      bool backgroundService = _prefs.getBool('backgroundService') ?? true;
+      if (!backgroundService) {
+        service.stopSelf();
+        print('Background service stopped...');
+      }
+    });
 
     service.on('set_proximity_key').listen((event) async {
       if (event == null) return;
@@ -443,6 +452,30 @@ class BleBackgroundService {
   }
 
   //Functions to call from app/foreground
+  static void handleAppDetached() {
+    _service.invoke('handle_app_detached');
+  }
+
+  static Future<void> disableBackgroundService() async {
+    if (await _service.isRunning()) {
+      _service.invoke('stopService');
+    }
+
+    await Future.delayed(Duration(seconds: 5));
+
+    initializeService(backgroundServiceEnabled: false);
+  }
+
+  static Future<void> enableBackgroundService() async {
+    if (await _service.isRunning()) {
+      _service.invoke('stopService');
+    }
+
+    await Future.delayed(Duration(seconds: 5));
+
+    initializeService(backgroundServiceEnabled: true);
+  }
+
   static Future<List<BleDevice>> getConnectedDevices() async {
     return await BleDeviceStorage.loadBleDevices();
   }
