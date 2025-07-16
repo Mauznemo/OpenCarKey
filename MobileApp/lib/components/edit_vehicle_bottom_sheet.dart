@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
-import '../services/widget_service.dart';
 import '../types/vehicle.dart';
 import '../utils/image_utils.dart';
 import 'custom_text_form_field.dart';
@@ -349,7 +348,7 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                   if (context.mounted) Navigator.pop(context);
                   setState(() {});
 
-                  WidgetService.reloadVehicles();
+                  BleBackgroundService.reloadHomescreenWidget();
                 },
                 icon: Icon(Icons.check),
                 label: Text('Done')),

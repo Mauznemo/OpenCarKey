@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../services/ble_background_service.dart';
 import '../services/ble_service.dart';
 import '../services/vehicle_service.dart';
-import '../services/widget_service.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import '../utils/image_utils.dart';
@@ -311,7 +310,7 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   if (context.mounted) Navigator.pop(context);
                   setState(() {});
 
-                  WidgetService.reloadVehicles();
+                  BleBackgroundService.reloadHomescreenWidget();
                 },
                 icon: Icon(Icons.add),
                 label: Text('Connect now')),

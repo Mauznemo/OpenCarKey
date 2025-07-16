@@ -15,6 +15,7 @@ import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import 'ble_service.dart';
 import 'vehicle_service.dart';
+import 'widget_service.dart';
 
 @pragma('vm:entry-point')
 class BleBackgroundService {
@@ -109,28 +110,12 @@ class BleBackgroundService {
 
     print('Background service started...');
 
+    WidgetService.initialize();
+
     final isolate = Isolate.current;
     print(
         'BG started in isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
-/*
-    // Create a receive port for incoming messages
-    final receivePort = ReceivePort();
 
-    // Register this port with a name so other isolates can find it
-    IsolateNameServer.registerPortWithName(
-        receivePort.sendPort, 'ble_service_port');
-
-    // Listen for messages from other isolates
-    receivePort.listen((message) {
-      print('BLE Service received message: $message');
-
-      if (message['action'] == 'send_message') {
-        // Send BLE message using your existing connection
-        BleService.sendMessage(
-            BluetoothDevice.fromId(message['macAddress']), message['message']);
-      }
-    });
-*/
     _updateNotification(flutterLocalNotificationsPlugin,
         'Waiting for connection...', 'Go near a vehicle to connect.');
 
@@ -149,6 +134,10 @@ class BleBackgroundService {
         service.stopSelf();
         print('Background service stopped...');
       }
+    });
+
+    service.on('reload_homescreen_widget').listen((event) async {
+      WidgetService.reloadVehicles();
     });
 
     service.on('set_proximity_key').listen((event) async {
@@ -365,6 +354,8 @@ class BleBackgroundService {
           'connectionState': event.connectionState.toString(),
         },
       );
+
+      WidgetService.reloadConnectedDevices();
     });
 
     _onMessageReceived.addListener(() {
@@ -406,6 +397,8 @@ class BleBackgroundService {
           'message': messageData.message,
         },
       );
+
+      WidgetService.processMessage(messageData.macAddress, messageData.message);
     });
 
     _getVehicles();
@@ -476,6 +469,10 @@ class BleBackgroundService {
   }
 
   //Functions to call from app/foreground
+  static void reloadHomescreenWidget() {
+    _service.invoke('reload_homescreen_widget');
+  }
+
   static void handleAppDetached() {
     _service.invoke('handle_app_detached');
   }

@@ -15,22 +15,15 @@ class WidgetService {
   static List<Vehicle> vehicles = [];
   static List<Vehicle> connectedVehicles = [];
 
-  static void init() async {
-    _getVehicles();
-
-    service.on('message_received').listen((event) {
-      if (event != null) {
-        _processMessage(event['macAddress'], event['message']);
-      }
-    });
-    service.on('connection_state_changed').listen((event) {
-      if (event != null) {
-        _getConnectedDevices();
-      }
-    });
+  /// Initializes the widget service. (ONLY call from Background service)
+  static Future<void> initialize() async {
+    await _getVehicles();
+    await reloadConnectedDevices();
+    updateConnectedVehicle();
   }
 
-  static void _processMessage(String macAddress, String message) {
+  /// (ONLY call from Background service)
+  static void processMessage(String macAddress, String message) {
     if (connectedVehicles.isEmpty) {
       return;
     }
@@ -46,12 +39,14 @@ class WidgetService {
     updateConnectedVehicle();
   }
 
-  static void reloadVehicles() {
-    _getVehicles();
+  /// Reloads vehicles for when their config was updated. (ONLY call from Background service)
+  static Future<void> reloadVehicles() async {
+    await _getVehicles();
     updateConnectedVehicle();
   }
 
-  static void _getConnectedDevices() async {
+  /// Reloads the connected devices and updates widget. (ONLY call from Background service)
+  static Future<void> reloadConnectedDevices() async {
     await VehicleStorage.reloadPrefs();
     connectedVehicles.clear();
     final connectedDevices = await BleBackgroundService.getConnectedDevices();
@@ -75,7 +70,8 @@ class WidgetService {
     updateConnectedVehicle();
   }
 
-  static void _getVehicles() async {
+  static Future<void> _getVehicles() async {
+    await VehicleStorage.reloadPrefs();
     final vehiclesData = await VehicleStorage.getVehicles();
 
     vehicles.clear();
@@ -86,7 +82,7 @@ class WidgetService {
       ));
     }
 
-    _getConnectedDevices();
+    reloadConnectedDevices();
   }
 
   @pragma('vm:entry-point')
@@ -128,6 +124,7 @@ class WidgetService {
     }
   }
 
+  /// Updates the widget with the current connected vehicle. (ONLY call from Background service)
   static void updateConnectedVehicle() async {
     if (connectedVehicles.isEmpty) {
       await HomeWidget.saveWidgetData<String>('currentVehicle', 'none');
