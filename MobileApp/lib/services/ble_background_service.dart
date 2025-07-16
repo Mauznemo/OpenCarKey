@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -34,6 +35,10 @@ class BleBackgroundService {
   static Future<void> initializeService(
       {required bool backgroundServiceEnabled}) async {
     await Permission.notification.request();
+
+    final isolate = Isolate.current;
+    print(
+        'Starting BG service from isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
 
     final service = FlutterBackgroundService();
 
@@ -104,6 +109,28 @@ class BleBackgroundService {
 
     print('Background service started...');
 
+    final isolate = Isolate.current;
+    print(
+        'BG started in isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
+/*
+    // Create a receive port for incoming messages
+    final receivePort = ReceivePort();
+
+    // Register this port with a name so other isolates can find it
+    IsolateNameServer.registerPortWithName(
+        receivePort.sendPort, 'ble_service_port');
+
+    // Listen for messages from other isolates
+    receivePort.listen((message) {
+      print('BLE Service received message: $message');
+
+      if (message['action'] == 'send_message') {
+        // Send BLE message using your existing connection
+        BleService.sendMessage(
+            BluetoothDevice.fromId(message['macAddress']), message['message']);
+      }
+    });
+*/
     _updateNotification(flutterLocalNotificationsPlugin,
         'Waiting for connection...', 'Go near a vehicle to connect.');
 
@@ -546,6 +573,7 @@ class BleBackgroundService {
   }
 
   static void sendMessage(BleDevice device, String message) {
+    print('Sending message: $message');
     _service.invoke(
         'send_message', {'macAddress': device.macAddress, 'message': message});
   }

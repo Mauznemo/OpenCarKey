@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -49,7 +50,8 @@ class BleService {
         print('Connection error: $e');
       });
 
-      print('Connected to device: ${device.advName}');
+      print(
+          'Connected to device: ${device.advName} on isolate ${Isolate.current.hashCode}');
 
       return device;
     } on PlatformException catch (e) {
@@ -80,7 +82,7 @@ class BleService {
       BluetoothDevice device, String message) async {
     try {
       if (!device.isConnected) {
-        print('Device is not connected');
+        print('Device is not connected, isolate: ${Isolate.current.hashCode}');
         return null;
       }
 
@@ -92,7 +94,7 @@ class BleService {
               characteristic.uuid ==
               Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
 
-      print('Sending message: $message');
+      print('Sending message: $message, isolate: ${Isolate.current.hashCode}');
       await characteristic.write(utf8.encode(message));
       final response = utf8.decode(await characteristic.read());
       print('Response: $response');

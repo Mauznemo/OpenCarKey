@@ -14,7 +14,8 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 
 Future<void> initializeApp() async {
   await initializeBle();
-  initializeBackgroundService(); //don't need to await
+  initializeBackgroundService();
+  WidgetService.init();
   HomeWidget.registerInteractivityCallback(WidgetService.backgroundCallback);
 }
 
