@@ -78,9 +78,6 @@ class BleBackgroundService {
         onBackground: backgroundServiceEnabled ? onIosBackground : null,
       ),
     );
-
-    // Start the service
-    //service.startService();
   }
 
 // This is the background isolate function
