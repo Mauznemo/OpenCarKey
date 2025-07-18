@@ -57,7 +57,8 @@ void checkSerial()
 
 void setup()
 {
-  Serial.println("Starting BLE Lock Controller");
+  if (DEBUG_MODE)
+    Serial.println("Starting BLE Lock Controller");
   // Initialize pins
   pinMode(doorsRelayPin1, OUTPUT);
   pinMode(doorsRelayPin2, OUTPUT);
@@ -75,7 +76,8 @@ void setup()
   onUnlocked = unlock;
   onTrunkOpened = openTrunk;
 
-  Serial.println("BLE Lock Controller Ready");
+  if (DEBUG_MODE)
+    Serial.println("BLE Lock Controller Ready");
 }
 
 void loop()

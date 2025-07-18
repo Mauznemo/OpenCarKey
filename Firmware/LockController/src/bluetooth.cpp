@@ -72,7 +72,8 @@ namespace
         if (onLocked)
             onLocked();
 
-        Serial.println("Locked (proximity:" + String(proximity) + ")");
+        if (DEBUG_MODE)
+            Serial.println("Locked (proximity:" + String(proximity) + ")");
     }
 
     void unlock(bool proximity = false, bool ignoreCooldown = false)
@@ -100,7 +101,8 @@ namespace
         if (onUnlocked)
             onUnlocked();
 
-        Serial.println("Unlocked (proximity:" + String(proximity) + ")");
+        if (DEBUG_MODE)
+            Serial.println("Unlocked (proximity:" + String(proximity) + ")");
     }
 
     void openTrunk()
@@ -136,7 +138,8 @@ class MyServerCallbacks : public BLEServerCallbacks
 {
     void onConnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param)
     {
-        Serial.println("Connected");
+        if (DEBUG_MODE)
+            Serial.println("Connected");
         memcpy(peerAddress, param->connect.remote_bda, sizeof(esp_bd_addr_t));
         deviceConnected = true;
         isAuthenticated = false; // Reset authentication on new connection
@@ -147,7 +150,8 @@ class MyServerCallbacks : public BLEServerCallbacks
 
     void onDisconnect(BLEServer *pServer)
     {
-        Serial.println("Disconnected");
+        if (DEBUG_MODE)
+            Serial.println("Disconnected");
         deviceConnected = false;
         isAuthenticated = false;      // Reset authentication on disconnect
         if (autoLocking && !isLocked) // Only true if disconnected before auto locking
@@ -173,7 +177,8 @@ class MyCallbacks : public BLECharacteristicCallbacks
             String command = String(value.c_str());
             command.trim();
 
-            Serial.println("Received command: " + command);
+            if (DEBUG_MODE)
+                Serial.println("Received command: " + command);
 
             // Handle authentication
             if (command.startsWith("AUTH:"))
@@ -209,7 +214,8 @@ class MyCallbacks : public BLECharacteristicCallbacks
             // Only process commands if authenticated
             if (!isAuthenticated)
             {
-                Serial.println("Not authenticated");
+                if (DEBUG_MODE)
+                    Serial.println("Not authenticated");
                 pCharacteristic->setValue("NOT_AUTH");
                 pCharacteristic->notify();
                 return;
@@ -253,8 +259,11 @@ class MyCallbacks : public BLECharacteristicCallbacks
                 rssiDeadZone = data.substring(index + 1).toInt();
                 triggerRssiStrength = command.substring(10).toFloat();
                 releaseRssiStrength = calculateReleaseRssi(triggerRssiStrength);
-                Serial.println("Trigger RSSI set: " + String(triggerRssiStrength));
-                Serial.println("Release RSSI set: " + String(releaseRssiStrength));
+                if (DEBUG_MODE)
+                {
+                    Serial.println("Trigger RSSI set: " + String(triggerRssiStrength));
+                    Serial.println("Release RSSI set: " + String(releaseRssiStrength));
+                }
             }
             else if (command == "RSSI")
             {
@@ -263,7 +272,8 @@ class MyCallbacks : public BLECharacteristicCallbacks
             else if (command.startsWith("PROX_COOLD:"))
             {
                 proximityCooldown = command.substring(11).toFloat();
-                Serial.println("Proximity cooldown set: " + String(proximityCooldown));
+                if (DEBUG_MODE)
+                    Serial.println("Proximity cooldown set: " + String(proximityCooldown));
             }
         }
     }
