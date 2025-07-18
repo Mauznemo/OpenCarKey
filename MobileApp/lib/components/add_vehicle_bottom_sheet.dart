@@ -309,6 +309,8 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   pinController.clear();
                   if (context.mounted) Navigator.pop(context);
                   setState(() {});
+
+                  BleBackgroundService.reloadHomescreenWidget();
                 },
                 icon: Icon(Icons.add),
                 label: Text('Connect now')),

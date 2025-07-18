@@ -21,6 +21,10 @@ android {
         jvmTarget = JavaVersion.VERSION_1_8
     }
 
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.4.8"
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.smartify_os.open_car_key_app"
@@ -39,6 +43,10 @@ android {
             signingConfig = signingConfigs.debug
         }
     }
+
+    buildFeatures {
+        compose true
+    }
 }
 
 flutter {
@@ -47,4 +55,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    implementation 'androidx.glance:glance-appwidget:1.1.1'
+
 }

@@ -12,6 +12,7 @@ If you plan to use the app you can help by filling out this quick [survey](https
 - App to lock, unlock, open the trunk or remote start the engine from your phone
 - Proximity key (with customizable trigger range) to auto lock and unlock your car if you are near it
 - Support for multiple vehicles
+- Home screen widget
 - ESP32 counterpart to the app
 
 <div style="display: flex; gap: 10px;">
@@ -24,7 +25,6 @@ If you plan to use the app you can help by filling out this quick [survey](https
 - Hardware keyfob using an ESP32 as alternative for the phone (one keyfob for all your cars using OpenCarKey)
 - Get at least some support for IOS (as far as possible with is limitations)
 - Auto save parking location if car gets out of range
-- Home screen widget and Android quick settings tiles
 
 ## Getting Started
 ### Mobile App

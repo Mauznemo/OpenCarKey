@@ -24,6 +24,7 @@ dependencies:
   crop_image: ^1.0.16
   path: ^1.9.1
   path_provider: ^2.1.5
+  home_widget: ^0.8.0
 
 dev_dependencies:
   flutter_test:

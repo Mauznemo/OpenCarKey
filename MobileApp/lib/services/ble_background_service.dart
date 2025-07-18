@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import 'ble_service.dart';
 import 'vehicle_service.dart';
+import 'widget_service.dart';
 
 @pragma('vm:entry-point')
 class BleBackgroundService {
@@ -34,6 +36,10 @@ class BleBackgroundService {
   static Future<void> initializeService(
       {required bool backgroundServiceEnabled}) async {
     await Permission.notification.request();
+
+    final isolate = Isolate.current;
+    print(
+        'Starting BG service from isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
 
     final service = FlutterBackgroundService();
 
@@ -78,9 +84,6 @@ class BleBackgroundService {
         onBackground: backgroundServiceEnabled ? onIosBackground : null,
       ),
     );
-
-    // Start the service
-    //service.startService();
   }
 
 // This is the background isolate function
@@ -107,6 +110,12 @@ class BleBackgroundService {
 
     print('Background service started...');
 
+    WidgetService.initialize();
+
+    final isolate = Isolate.current;
+    print(
+        'BG started in isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
+
     _updateNotification(flutterLocalNotificationsPlugin,
         'Waiting for connection...', 'Go near a vehicle to connect.');
 
@@ -125,6 +134,10 @@ class BleBackgroundService {
         service.stopSelf();
         print('Background service stopped...');
       }
+    });
+
+    service.on('reload_homescreen_widget').listen((event) async {
+      WidgetService.reloadVehicles();
     });
 
     service.on('set_proximity_key').listen((event) async {
@@ -341,6 +354,8 @@ class BleBackgroundService {
           'connectionState': event.connectionState.toString(),
         },
       );
+
+      WidgetService.reloadConnectedDevices();
     });
 
     _onMessageReceived.addListener(() {
@@ -382,6 +397,8 @@ class BleBackgroundService {
           'message': messageData.message,
         },
       );
+
+      WidgetService.processMessage(messageData.macAddress, messageData.message);
     });
 
     _getVehicles();
@@ -452,6 +469,10 @@ class BleBackgroundService {
   }
 
   //Functions to call from app/foreground
+  static void reloadHomescreenWidget() {
+    _service.invoke('reload_homescreen_widget');
+  }
+
   static void handleAppDetached() {
     _service.invoke('handle_app_detached');
   }
@@ -549,6 +570,7 @@ class BleBackgroundService {
   }
 
   static void sendMessage(BleDevice device, String message) {
+    print('Sending message: $message');
     _service.invoke(
         'send_message', {'macAddress': device.macAddress, 'message': message});
   }
