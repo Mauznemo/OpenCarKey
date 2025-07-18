@@ -20,7 +20,6 @@ import 'widget_service.dart';
 @pragma('vm:entry-point')
 class BleBackgroundService {
   static List<BackgroundVehicle> vehicles = [];
-  static List<String> _proxyLocked = [];
   static final ValueNotifier<MessageData> _onMessageReceived =
       ValueNotifier<MessageData>(MessageData('', ''));
   static List<StreamSubscription?> _subscriptions = [];
@@ -339,8 +338,8 @@ class BleBackgroundService {
         //The device was disconnected without having time to say it locked, so let the user know it was locked here
         if (_proximityKeyEnabled &&
             _vibrate &&
-            !_proxyLocked.contains(event.device.remoteId.str) &&
-            !ignoreProximityKey) {
+            !ignoreProximityKey &&
+            !changedVehicle.doorsLocked) {
           _vibrateLongTwice();
         }
 
@@ -366,7 +365,6 @@ class BleBackgroundService {
         BackgroundVehicle? changedVehicle =
             _getChangedVehicle(messageData.macAddress);
 
-        _proxyLocked.add(messageData.macAddress);
         if (_vibrate) {
           _vibrateLongTwice();
         }
@@ -379,7 +377,6 @@ class BleBackgroundService {
         BackgroundVehicle? changedVehicle =
             _getChangedVehicle(messageData.macAddress);
 
-        _proxyLocked.remove(messageData.macAddress);
         if (_vibrate) {
           _vibrateLongTwice();
         }
