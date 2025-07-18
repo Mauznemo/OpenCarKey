@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:isolate';
 
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:home_widget/home_widget.dart';
@@ -15,14 +14,13 @@ class WidgetService {
   static List<Vehicle> vehicles = [];
   static List<Vehicle> connectedVehicles = [];
 
-  /// Initializes the widget service. (ONLY call from Background service)
+  /// Initializes the widget service. (ONLY call from Background service isolate)
   static Future<void> initialize() async {
     await _getVehicles();
-    await reloadConnectedDevices();
-    updateConnectedVehicle();
+    reloadConnectedDevices();
   }
 
-  /// (ONLY call from Background service)
+  /// Updates the widget with the new state of the current connected vehicle. (ONLY call from Background service isolate)
   static void processMessage(String macAddress, String message) {
     if (connectedVehicles.isEmpty) {
       return;
@@ -39,14 +37,16 @@ class WidgetService {
     updateConnectedVehicle();
   }
 
-  /// Reloads vehicles for when their config was updated. (ONLY call from Background service)
+  /// Reloads vehicles for when their config was updated. (ONLY call from Background service isolate)
   static Future<void> reloadVehicles() async {
     await _getVehicles();
-    updateConnectedVehicle();
+    reloadConnectedDevices();
   }
 
-  /// Reloads the connected devices and updates widget. (ONLY call from Background service)
+  /// Reloads the connected devices and updates widget. (ONLY call from Background service isolate)
   static Future<void> reloadConnectedDevices() async {
+    HomeWidget.registerInteractivityCallback(
+        backgroundCallback); //Re-register callback in case it was killed by the system
     await VehicleStorage.reloadPrefs();
     connectedVehicles.clear();
     final connectedDevices = await BleBackgroundService.getConnectedDevices();
@@ -81,16 +81,10 @@ class WidgetService {
         data: vehicleData,
       ));
     }
-
-    reloadConnectedDevices();
   }
 
   @pragma('vm:entry-point')
   static void backgroundCallback(Uri? uri) {
-    final isolate = Isolate.current;
-    print(
-        'backgroundCallback called in isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
-
     if (uri != null) {
       final actionType = uri.queryParameters['action_type'] ?? 'unknown_action';
       final macAddress = uri.queryParameters['mac_address'] ?? 'unknown_mac';
@@ -124,7 +118,7 @@ class WidgetService {
     }
   }
 
-  /// Updates the widget with the current connected vehicle. (ONLY call from Background service)
+  /// Updates the widget with the current connected vehicle. (ONLY call from Background service isolate)
   static void updateConnectedVehicle() async {
     if (connectedVehicles.isEmpty) {
       await HomeWidget.saveWidgetData<String>('currentVehicle', 'none');
