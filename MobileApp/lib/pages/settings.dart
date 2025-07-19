@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/ble_background_service.dart';
 
@@ -309,6 +310,14 @@ class _SettingsState extends State<SettingsPage> {
                     style: TextStyle(fontSize: 16),
                   ),
                 ],
+              ),
+              SizedBox(height: 20),
+              FilledButton.icon(
+                icon: Icon(Icons.favorite),
+                label: Text('Support Project'),
+                onPressed: () async {
+                  await launchUrl(Uri.parse('https://smartify-os.com?support&code-url=https://github.com/Mauznemo/OpenCarKey'));
+                },
               ),
             ]),
           ),
