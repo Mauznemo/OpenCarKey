@@ -280,7 +280,7 @@ class _SettingsState extends State<SettingsPage> {
                             builder: (context) => AlertDialog(
                                   title: const Text('Warning'),
                                   content: Text(
-                                      "If you disable the background service proximity key won't work and connection speed after opening the app might be slower."),
+                                      "If you disable the background service proximity key and the widget won't work and connection speed after opening the app might be slower."),
                                   actions: [
                                     TextButton(
                                         onPressed: () {
@@ -316,7 +316,8 @@ class _SettingsState extends State<SettingsPage> {
                 icon: Icon(Icons.favorite),
                 label: Text('Support Project'),
                 onPressed: () async {
-                  await launchUrl(Uri.parse('https://smartify-os.com?support&code-url=https://github.com/Mauznemo/OpenCarKey'));
+                  await launchUrl(Uri.parse(
+                      'https://smartify-os.com?support&code-url=https://github.com/Mauznemo/OpenCarKey'));
                 },
               ),
             ]),

@@ -15,7 +15,9 @@ class WidgetService {
   static List<Vehicle> connectedVehicles = [];
 
   /// Initializes the widget service. (ONLY call from Background service isolate)
-  static Future<void> initialize() async {
+  static Future<void> initialize({bool backgroundServiceEnabled = true}) async {
+    await HomeWidget.saveWidgetData<bool>(
+        'backgroundService', backgroundServiceEnabled);
     await _getVehicles();
     reloadConnectedDevices();
   }

@@ -59,6 +59,7 @@ class HomescreenWidget : GlanceAppWidget() {
     private fun GlanceContent(context: Context, currentState: HomeWidgetGlanceState) {
         val prefs = currentState.preferences
         val currentVehicleJson = prefs.getString("currentVehicle", "none")
+        val backgroundServiceEnabled = prefs.getBoolean("backgroundService", true)
 
         var name = "N/A"
         var macAddress = ""
@@ -66,6 +67,16 @@ class HomescreenWidget : GlanceAppWidget() {
         var hasTrunkUnlock = false
         var isLocked = false
         var engineOn = false
+
+        if (!backgroundServiceEnabled) {
+            Box(modifier = GlanceModifier.fillMaxSize().background(DynamicThemeColorProviders.widgetBackground).padding(16.dp), contentAlignment = Alignment.Center) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Background service is disabled", style = TextStyle(color = DynamicThemeColorProviders.inverseSurface))
+                }
+
+            }
+            return
+        }
 
         if (currentVehicleJson == "none") {
             Box(modifier = GlanceModifier.fillMaxSize().background(DynamicThemeColorProviders.widgetBackground).padding(16.dp), contentAlignment = Alignment.Center) {

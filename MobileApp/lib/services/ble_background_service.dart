@@ -109,8 +109,6 @@ class BleBackgroundService {
 
     print('Background service started...');
 
-    WidgetService.initialize();
-
     final isolate = Isolate.current;
     print(
         'BG started in isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
@@ -126,6 +124,9 @@ class BleBackgroundService {
     _deadZone = _prefs.getDouble('deadZone') ?? 4;
     _vibrate = _prefs.getBool('vibrate') ?? true;
     _proximityCooldown = _prefs.getDouble('proximityCooldown') ?? 1;
+    final backgroundService = _prefs.getBool('backgroundService') ?? true;
+
+    WidgetService.initialize(backgroundServiceEnabled: backgroundService);
 
     service.on('handle_app_detached').listen((event) async {
       bool backgroundService = _prefs.getBool('backgroundService') ?? true;
