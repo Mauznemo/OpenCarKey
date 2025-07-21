@@ -19,6 +19,7 @@ class _SettingsState extends State<SettingsPage> {
   double deadZone = 4;
   double proximityCooldown = 1; //in min
   bool backgroundService = true;
+  bool ignoreProtocolMismatch = false;
 
   void loadPrefs() async {
     prefs = await SharedPreferences.getInstance();
@@ -29,6 +30,7 @@ class _SettingsState extends State<SettingsPage> {
     deadZone = prefs.getDouble('deadZone') ?? 4;
     proximityCooldown = prefs.getDouble('proximityCooldown') ?? 1;
     backgroundService = prefs.getBool('backgroundService') ?? true;
+    ignoreProtocolMismatch = prefs.getBool('ignoreProtocolMismatch') ?? false;
 
     setState(() {});
   }
@@ -307,6 +309,24 @@ class _SettingsState extends State<SettingsPage> {
                   SizedBox(width: 10),
                   const Text(
                     'Background Service Enabled',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ],
+              ),
+              SizedBox(height: 20),
+              Row(
+                children: [
+                  Switch(
+                    value: ignoreProtocolMismatch,
+                    onChanged: (value) {
+                      ignoreProtocolMismatch = value;
+                      prefs.setBool('ignoreProtocolMismatch', value);
+                      setState(() {});
+                    },
+                  ),
+                  SizedBox(width: 10),
+                  const Text(
+                    'Ignore Protocol Version Mismatch',
                     style: TextStyle(fontSize: 16),
                   ),
                 ],

@@ -15,6 +15,9 @@ extern void (*onTrunkOpened)();
 /// @brief Called when the engine gets started from the app
 extern void (*onEngineStarted)();
 
+/// @brief Version of the bluetooth protocol
+extern const String PROTOCOL_VERSION;
+
 /// @brief Is the ESP is connected to the phone
 extern bool deviceConnected;
 /// @brief Is the currently connected phone authenticated

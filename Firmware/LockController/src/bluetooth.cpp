@@ -12,6 +12,8 @@
 
 #define RSSI_SAMPLES 5 // Number of samples for smoothing
 
+const String PROTOCOL_VERSION = "V1";
+
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
 esp_bd_addr_t peerAddress;
@@ -180,8 +182,14 @@ class MyCallbacks : public BLECharacteristicCallbacks
             if (DEBUG_MODE)
                 Serial.println("Received command: " + command);
 
+            if (command == "VER")
+            {
+                pCharacteristic->setValue(("VER:" + PROTOCOL_VERSION).c_str());
+                pCharacteristic->notify();
+                return;
+            }
             // Handle authentication
-            if (command.startsWith("AUTH:"))
+            else if (command.startsWith("AUTH:"))
             {
                 unsigned long currentMillis = millis();
 

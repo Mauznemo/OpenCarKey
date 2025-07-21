@@ -19,6 +19,8 @@ import 'widget_service.dart';
 
 @pragma('vm:entry-point')
 class BleBackgroundService {
+  static const PROTOCLOL_VERSION = 'V1';
+
   static List<BackgroundVehicle> vehicles = [];
   static final ValueNotifier<MessageData> _onMessageReceived =
       ValueNotifier<MessageData>(MessageData('', ''));
@@ -30,6 +32,7 @@ class BleBackgroundService {
   static bool _vibrate = true;
   static double _deadZone = 4;
   static double _proximityCooldown = 1;
+  static List<int> _sentMismatchNotifications = [];
 
   // This should be in your main.dart before runApp
   static Future<void> initializeService(
@@ -181,6 +184,8 @@ class BleBackgroundService {
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
         await BleService.sendMessage(vehicle.device, 'SEND_DATA');
+        await Future.delayed(Duration(milliseconds: 200));
+        await BleService.sendMessage(vehicle.device, 'VER');
       }
     });
 
@@ -294,6 +299,9 @@ class BleBackgroundService {
         _subscriptions
             .add(notificationSubscription); //TODO: remove if no longer needed
 
+        await BleService.sendMessage(changedVehicle.device, 'VER');
+        await Future.delayed(Duration(milliseconds: 200));
+
         if (_proximityKeyEnabled && !ignoreProximityKey) {
           _updateNotification(
               flutterLocalNotificationsPlugin,
@@ -358,9 +366,47 @@ class BleBackgroundService {
       WidgetService.reloadConnectedDevices();
     });
 
-    _onMessageReceived.addListener(() {
+    _onMessageReceived.addListener(() async {
       final messageData = _onMessageReceived.value;
       print('Message received: ${messageData.message}');
+
+      if (messageData.message.startsWith('VER')) {
+        await _prefs.reload();
+        final ignoreProtocolMismatch =
+            _prefs.getBool('ignoreProtocolMismatch') ?? false;
+        final deviceProtocolVersion = messageData.message.substring(4);
+
+        print(
+            'Device protocol version: $deviceProtocolVersion, ignoreProtocolMismatch: $ignoreProtocolMismatch');
+
+        if (deviceProtocolVersion != PROTOCLOL_VERSION &&
+            !ignoreProtocolMismatch) {
+          BackgroundVehicle? changedVehicle =
+              _getChangedVehicle(messageData.macAddress);
+
+          if (changedVehicle != null) {
+            int notificationId =
+                changedVehicle.data.macAddress.hashCode & 0x7FFFFFFF;
+
+            if (!_sentMismatchNotifications.contains(notificationId)) {
+              _sentMismatchNotifications.add(notificationId);
+
+              flutterLocalNotificationsPlugin.show(
+                notificationId,
+                'Protocol version mismatch',
+                '${changedVehicle.data.name} is on protocol version $deviceProtocolVersion and the app is on $PROTOCLOL_VERSION. Some features might not work.',
+                const NotificationDetails(
+                  android: AndroidNotificationDetails(
+                    'protocol_mismatch',
+                    'Protocol version mismatch',
+                    icon: 'ic_launcher_foreground',
+                  ),
+                ),
+              );
+            }
+          }
+        }
+      }
 
       if (messageData.message.startsWith('LOCKED_PROX')) {
         BackgroundVehicle? changedVehicle =

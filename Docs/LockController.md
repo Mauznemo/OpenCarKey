@@ -207,12 +207,13 @@ void bluetoothLoop()
 ```
 Loop need for bluetooth to work
 
-## Ble communication protocol
+## Ble communication protocol (V1)
 Communication protocol between ESP and App.
 | Message                                        | Response                                                         |
 | ---------------------------------------------- | ---------------------------------------------------------------- |
+| `VER`                                          | `VER:{Current protocol version}`                                 |
 | `AUTH:{Password String}`                       | `AUTH_OK`, `AUTH_FAIL` or `AUTH_COOLD` (too many wrong attempts) |
-| Anything while not authenticated               | `NOT_AUTH`                                                       |
+| Anything else while not authenticated          | `NOT_AUTH`                                                       |
 | `SEND_DATA`                                    | `LOCKED` or `UNLOCKED`                                           |
 | `LOCK`                                         | `LOCKED`                                                         |
 | `UNLOCK`                                       | `UNLOCKED`                                                       |

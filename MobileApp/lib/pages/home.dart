@@ -25,13 +25,16 @@ class _HomePageState extends State<HomePage> {
 
   late SharedPreferences prefs;
   bool proximityKey = false;
+  bool ignoreProtocolMismatch = false;
 
   final List<String> notAuthenticatedDevices = [];
+  final List<String> verMismatchDevices = [];
 
   void loadPrefs() async {
     prefs = await SharedPreferences.getInstance();
 
     proximityKey = prefs.getBool('proximityKey') ?? false;
+    ignoreProtocolMismatch = prefs.getBool('ignoreProtocolMismatch') ?? false;
 
     setState(() {});
   }
@@ -81,7 +84,48 @@ class _HomePageState extends State<HomePage> {
   }
 
   void processMessage(String macAddress, String message) {
-    if (message.startsWith('NOT_AUTH') ||
+    if (message.startsWith('VER')) {
+      final deviceProtocolVersion = message.substring(4);
+
+      if (deviceProtocolVersion == BleBackgroundService.PROTOCLOL_VERSION) {
+        return;
+      }
+
+      if (verMismatchDevices.contains(macAddress)) {
+        return;
+      }
+      verMismatchDevices.add(macAddress);
+
+      if (ignoreProtocolMismatch) {
+        setState(() {});
+        return;
+      }
+
+      final vehicleName = vehicles
+          .firstWhere((element) => element.data.macAddress == macAddress)
+          .data
+          .name;
+
+      showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+                title: const Text('Protocol Version Mismatch'),
+                content: Text(
+                    '$vehicleName is on protocol version $deviceProtocolVersion and the app is on ${BleBackgroundService.PROTOCLOL_VERSION}. Everything you need might still work, but if not please update your ESP32 to the newest version.'),
+                actions: [
+                  TextButton(
+                      onPressed: Navigator.of(context).pop,
+                      child: const Text('Okay')),
+                  TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        prefs.setBool('ignoreProtocolMismatch', true);
+                      },
+                      child: const Text("Don't show this again")),
+                ],
+              ));
+      setState(() {});
+    } else if (message.startsWith('NOT_AUTH') ||
         message.startsWith('AUTH_FAIL') ||
         message.startsWith('AUTH_COOLD')) {
       if (notAuthenticatedDevices.contains(macAddress)) {
@@ -97,7 +141,7 @@ class _HomePageState extends State<HomePage> {
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
-                      child: const Text('OK'))
+                      child: const Text('Okay'))
                 ],
               ));
       setState(() {});
@@ -277,12 +321,29 @@ class _HomePageState extends State<HomePage> {
                                         Icon(
                                           Icons.location_disabled,
                                         ),
-                                      Spacer(),
+                                      SizedBox(width: 10),
                                       if (notAuthenticatedDevices.contains(
                                           vehicle.device.macAddress.toString()))
-                                        Icon(
-                                          Icons.pin,
-                                          color: Colors.amber,
+                                        Tooltip(
+                                          message: 'Device not authenticated.',
+                                          triggerMode: TooltipTriggerMode.tap,
+                                          showDuration: Duration(seconds: 2),
+                                          child: Icon(
+                                            Icons.pin,
+                                            color: Colors.amber,
+                                          ),
+                                        ),
+                                      if (verMismatchDevices.contains(
+                                          vehicle.device.macAddress.toString()))
+                                        Tooltip(
+                                          triggerMode: TooltipTriggerMode.tap,
+                                          showDuration: Duration(seconds: 5),
+                                          message:
+                                              'ESP32 firmware version mismatch. Please update your ESP32.',
+                                          child: Icon(
+                                            Icons.update_disabled,
+                                            color: Colors.amber,
+                                          ),
                                         ),
                                     ],
                                   ),
