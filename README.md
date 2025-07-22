@@ -16,9 +16,10 @@ If you plan to use the app you can help by filling out this quick [survey](https
 - ESP32 counterpart to the app
 
 <div style="display: flex; gap: 10px;">
-  <img src="Docs/Images/screenshot_home.png" width="200" height="auto">
-  <img src="Docs/Images/screenshot_edit.png" width="200" height="auto">
-  <img src="Docs/Images/screenshot_settings.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_home_OLrFi.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_edit_OLrFi.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_settings_NWhqX.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_widget_io2lu.png" width="200" height="auto">
 </div>
 
 ### Planned
