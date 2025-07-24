@@ -3,9 +3,9 @@
 #include "bluetooth.h"
 
 // Pin definitions
-const int doorsRelayPin1 = 15;
-const int doorsRelayPin2 = 16;
-const int trunkRelayPin1 = 17;
+const int doorsRelayPin1 = 25;
+const int doorsRelayPin2 = 26;
+const int trunkRelayPin1 = 27;
 
 void openTrunk()
 {
