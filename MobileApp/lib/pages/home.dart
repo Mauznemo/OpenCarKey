@@ -417,7 +417,7 @@ class _HomePageState extends State<HomePage> {
                                                               BleBackgroundService
                                                                   .sendMessage(
                                                                 vehicle.device,
-                                                                'UNLOCK_TRUNK',
+                                                                'OPEN_TRUNK',
                                                               );
                                                             }
                                                           : null,
