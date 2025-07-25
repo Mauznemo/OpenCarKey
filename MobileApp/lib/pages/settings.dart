@@ -20,6 +20,7 @@ class _SettingsState extends State<SettingsPage> {
   double proximityCooldown = 1; //in min
   bool backgroundService = true;
   bool ignoreProtocolMismatch = false;
+  bool showMacAddress = true;
 
   void loadPrefs() async {
     prefs = await SharedPreferences.getInstance();
@@ -31,6 +32,7 @@ class _SettingsState extends State<SettingsPage> {
     proximityCooldown = prefs.getDouble('proximityCooldown') ?? 1;
     backgroundService = prefs.getBool('backgroundService') ?? true;
     ignoreProtocolMismatch = prefs.getBool('ignoreProtocolMismatch') ?? false;
+    showMacAddress = prefs.getBool('showMacAddress') ?? true;
 
     setState(() {});
   }
@@ -327,6 +329,24 @@ class _SettingsState extends State<SettingsPage> {
                   SizedBox(width: 10),
                   const Text(
                     'Ignore Protocol Version Mismatch',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ],
+              ),
+              SizedBox(height: 20),
+              Row(
+                children: [
+                  Switch(
+                    value: showMacAddress,
+                    onChanged: (value) {
+                      showMacAddress = value;
+                      prefs.setBool('showMacAddress', value);
+                      setState(() {});
+                    },
+                  ),
+                  SizedBox(width: 10),
+                  const Text(
+                    'Show Mac Addresses',
                     style: TextStyle(fontSize: 16),
                   ),
                 ],

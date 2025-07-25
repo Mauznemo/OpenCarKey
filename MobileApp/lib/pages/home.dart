@@ -26,6 +26,7 @@ class _HomePageState extends State<HomePage> {
   late SharedPreferences prefs;
   bool proximityKey = false;
   bool ignoreProtocolMismatch = false;
+  bool showMacAddress = true;
 
   final List<String> notAuthenticatedDevices = [];
   final List<String> verMismatchDevices = [];
@@ -35,6 +36,7 @@ class _HomePageState extends State<HomePage> {
 
     proximityKey = prefs.getBool('proximityKey') ?? false;
     ignoreProtocolMismatch = prefs.getBool('ignoreProtocolMismatch') ?? false;
+    showMacAddress = prefs.getBool('showMacAddress') ?? true;
 
     setState(() {});
   }
@@ -300,6 +302,8 @@ class _HomePageState extends State<HomePage> {
                               title: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  if (!showMacAddress)
+                                    const SizedBox(height: 3),
                                   Row(
                                     children: [
                                       Icon(
@@ -349,13 +353,16 @@ class _HomePageState extends State<HomePage> {
                                     ],
                                   ),
                                   const SizedBox(height: 4),
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                        left: 8.0, bottom: 4.0),
-                                    child: Text(
-                                        'Mac Address: ${vehicle.data.macAddress}',
-                                        style: const TextStyle(fontSize: 12)),
-                                  ),
+                                  if (showMacAddress)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                          left: 8.0, bottom: 4.0),
+                                      child: Text(
+                                          'Mac Address: ${vehicle.data.macAddress}',
+                                          style: const TextStyle(fontSize: 12)),
+                                    ),
+                                  if (!showMacAddress)
+                                    const SizedBox(height: 10),
                                   const SizedBox(height: 10),
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -455,6 +462,8 @@ class _HomePageState extends State<HomePage> {
                                           : Container(),
                                     ],
                                   ),
+                                  if (!showMacAddress)
+                                    const SizedBox(height: 5),
                                 ],
                               ),
                               trailing: IconButton(
