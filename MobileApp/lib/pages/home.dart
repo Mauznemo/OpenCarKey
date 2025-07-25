@@ -136,8 +136,9 @@ class _HomePageState extends State<HomePage> {
           context: context,
           builder: (context) => AlertDialog(
                 title: const Text('Not Authenticated'),
-                content: Text(
-                    'The device $macAddress you are trying to communicate with is not authenticated. Please make sure the pin is correct.'),
+                content: Text(message.startsWith('AUTH_COOLD')
+                    ? 'The device $macAddress you are trying to communicate with is not authenticated. Please make sure the pin is correct.'
+                    : 'Too many wrong authentication attempts on $macAddress. Please try again later.'),
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
