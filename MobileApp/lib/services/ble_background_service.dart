@@ -143,6 +143,10 @@ class BleBackgroundService {
       WidgetService.reloadVehicles();
     });
 
+    service.on('change_homescreen_widget_vehicle').listen((event) async {
+      WidgetService.changeVehicle();
+    });
+
     service.on('set_proximity_key').listen((event) async {
       if (event == null) return;
       bool enabled = event['enabled'];
@@ -515,6 +519,10 @@ class BleBackgroundService {
   //Functions to call from app/foreground
   static void reloadHomescreenWidget() {
     _service.invoke('reload_homescreen_widget');
+  }
+
+  static void changeHomescreenWidgetVehicle() {
+    _service.invoke('change_homescreen_widget_vehicle');
   }
 
   static void handleAppDetached() {

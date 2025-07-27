@@ -13,6 +13,7 @@ class WidgetService {
   static FlutterBackgroundService service = FlutterBackgroundService();
   static List<Vehicle> vehicles = [];
   static List<Vehicle> connectedVehicles = [];
+  static int selectedVehicleIndex = 0;
 
   /// Initializes the widget service. (ONLY call from Background service isolate)
   static Future<void> initialize({bool backgroundServiceEnabled = true}) async {
@@ -24,15 +25,16 @@ class WidgetService {
 
   /// Updates the widget with the new state of the current connected vehicle. (ONLY call from Background service isolate)
   static void processMessage(String macAddress, String message) {
-    if (connectedVehicles.isEmpty) {
+    if (connectedVehicles.length < selectedVehicleIndex) {
       return;
     }
 
-    if (macAddress == connectedVehicles.first.device.macAddress) {
+    if (macAddress ==
+        connectedVehicles[selectedVehicleIndex].device.macAddress) {
       if (message.startsWith('LOCKED')) {
-        connectedVehicles.first.doorsLocked = true;
+        connectedVehicles[selectedVehicleIndex].doorsLocked = true;
       } else if (message.startsWith('UNLOCKED')) {
-        connectedVehicles.first.doorsLocked = false;
+        connectedVehicles[selectedVehicleIndex].doorsLocked = false;
       }
     }
 
@@ -49,7 +51,6 @@ class WidgetService {
   static Future<void> reloadConnectedDevices() async {
     HomeWidget.registerInteractivityCallback(
         backgroundCallback); //Re-register callback in case it was killed by the system
-    await VehicleStorage.reloadPrefs();
     connectedVehicles.clear();
     final connectedDevices = await BleBackgroundService.getConnectedDevices();
     List<String> connectedDeviceMacs =
@@ -69,6 +70,9 @@ class WidgetService {
       }
     }
 
+    if (connectedVehicles.length < selectedVehicleIndex) {
+      selectedVehicleIndex = 0;
+    }
     updateConnectedVehicle();
   }
 
@@ -85,11 +89,22 @@ class WidgetService {
     }
   }
 
+  static void changeVehicle() {
+    selectedVehicleIndex =
+        (selectedVehicleIndex + 1) % connectedVehicles.length;
+    updateConnectedVehicle();
+  }
+
   @pragma('vm:entry-point')
   static void backgroundCallback(Uri? uri) {
     if (uri != null) {
       final actionType = uri.queryParameters['action_type'] ?? 'unknown_action';
       final macAddress = uri.queryParameters['mac_address'] ?? 'unknown_mac';
+
+      if (actionType == 'change_vehicle') {
+        BleBackgroundService.changeHomescreenWidgetVehicle();
+        return;
+      }
 
       if (macAddress == 'unknown_mac') {
         return;
@@ -125,7 +140,7 @@ class WidgetService {
     if (connectedVehicles.isEmpty) {
       await HomeWidget.saveWidgetData<String>('currentVehicle', 'none');
     } else {
-      final currentVehicle = connectedVehicles.first;
+      final currentVehicle = connectedVehicles[selectedVehicleIndex];
       await HomeWidget.saveWidgetData<String>(
           'currentVehicle',
           json.encode({
@@ -135,6 +150,7 @@ class WidgetService {
             'hasTrunkUnlock': currentVehicle.data.hasTrunkUnlock,
             'isLocked': currentVehicle.doorsLocked,
             'engineOn': currentVehicle.engineOn,
+            'multipleConnectedDevices': connectedVehicles.length > 1
           }));
     }
 
