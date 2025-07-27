@@ -3,7 +3,7 @@
 OpenCarKey is an open source project to make your own DIY remote car key or keyless entry.
 
 >[!CAUTION]
->**Disclaimer:** This project is currently in the development phase, so it my still contain some bugs.
+>**Disclaimer:** This project is currently in the development phase, so it my still contain some bugs and is not fully done yet.
 
 If you plan to use the app you can help by filling out this quick [survey](https://forms.gle/NZScbn8mKhP7yUqp9) about what features should be added to it. 
 
