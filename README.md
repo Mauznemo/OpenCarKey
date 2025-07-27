@@ -7,6 +7,8 @@ OpenCarKey is an open source project to make your own DIY remote car key or keyl
 
 If you plan to use the app you can help by filling out this quick [survey](https://forms.gle/NZScbn8mKhP7yUqp9) about what features should be added to it. 
 
+If you need help or have more feature ideas you can join the [Discord](https://discord.gg/dYf8zrVUHt)!
+
 ## Features:
 ### Current
 - App to lock, unlock, open the trunk or remote start the engine from your phone
