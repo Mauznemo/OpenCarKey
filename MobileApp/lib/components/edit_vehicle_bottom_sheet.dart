@@ -331,9 +331,6 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
 
                   if (!isValid) return;
 
-                  BleBackgroundService.sendMessage(
-                      widget.vehicle.device, 'AUTH:${pinController.text}');
-
                   await VehicleStorage.updateVehicle(VehicleData(
                       name: vehicleNameController.text,
                       macAddress: widget.vehicle.data.macAddress,

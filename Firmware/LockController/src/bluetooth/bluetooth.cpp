@@ -5,14 +5,16 @@
 #include <BLE2902.h>
 #include "bluetooth.h"
 #include "esp_gap_ble_api.h"
+#include "commands.h"
 
+#define BLE_MTU_SIZE 64
 // BLE service and characteristic UUIDs
 #define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 #define RSSI_SAMPLES 5 // Number of samples for smoothing
 
-const String PROTOCOL_VERSION = "V1";
+const std::string PROTOCOL_VERSION = "V2";
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
@@ -48,6 +50,46 @@ static int authAttempts = 0;
 static unsigned long lastAuthAttemptMillis = 0;
 const unsigned long authCooldownMillis = 10000;
 
+void sendToClinet(Esp32Response responseCode, const std::string &additionalDataString = "")
+{
+
+    size_t stringLen = additionalDataString.length();
+
+    if (stringLen > 12)
+    {
+        Serial.println("Warning: additionalDataString truncated to 12 bytes.");
+        stringLen = 12;
+    }
+
+    // Calculate total buffer size: 1 byte for command + 1 byte for string length + string data
+    size_t totalBufferSize = 1;
+
+    if (stringLen > 0)
+    {
+        totalBufferSize += 1;         // Add 1 byte for string length
+        totalBufferSize += stringLen; // Add bytes for the string data
+    }
+
+    std::vector<uint8_t> responseBuffer(totalBufferSize);
+
+    responseBuffer[0] = static_cast<uint8_t>(responseCode);
+
+    if (DEBUG_MODE)
+        Serial.printf("Sent ESP32 Response: 0x%02X\n", static_cast<uint8_t>(responseCode));
+
+    if (stringLen > 0)
+    {
+        responseBuffer[1] = static_cast<uint8_t>(stringLen);                        // String length byte
+        memcpy(responseBuffer.data() + 2, additionalDataString.c_str(), stringLen); // Copy string data
+
+        if (DEBUG_MODE)
+            Serial.printf(", String Length: %zu, Data: \"%s\"\n", stringLen, additionalDataString.substr(0, stringLen).c_str());
+    }
+
+    pCharacteristic->setValue(responseBuffer.data(), totalBufferSize);
+    pCharacteristic->notify();
+}
+
 namespace
 {
     void lock(bool proximity = false, bool ignoreCooldown = false)
@@ -65,8 +107,7 @@ namespace
 
         if (deviceConnected)
         {
-            pCharacteristic->setValue(proximity ? "LOCKED_PROX" : "LOCKED");
-            pCharacteristic->notify();
+            sendToClinet(proximity ? Esp32Response::PROXIMITY_LOCKED : Esp32Response::LOCKED);
         }
 
         isLocked = true;
@@ -94,8 +135,7 @@ namespace
 
         if (deviceConnected)
         {
-            pCharacteristic->setValue(proximity ? "UNLOCKED_PROX" : "UNLOCKED");
-            pCharacteristic->notify();
+            sendToClinet(proximity ? Esp32Response::PROXIMITY_UNLOCKED : Esp32Response::UNLOCKED);
         }
 
         isLocked = false;
@@ -174,115 +214,119 @@ class MyCallbacks : public BLECharacteristicCallbacks
     void onWrite(BLECharacteristic *pCharacteristic)
     {
         std::string value = pCharacteristic->getValue();
-        if (value.length() > 0)
+        size_t length = value.length();
+
+        if (length == 0)
         {
-            String command = String(value.c_str());
-            command.trim();
+            if (DEBUG_MODE)
+                Serial.println("Received empty value.");
+            return;
+        }
+
+        if (length < 33)
+        { // Minimum for HMAC + Command
+            Serial.println("Received malformed client command: too short.");
+            // TODO: send error
+            return;
+        }
+
+        uint8_t receivedHmac[32];
+        memcpy(receivedHmac, value.data(), 32);
+
+        // TODO: Check HMAC
+
+        uint8_t commandByte[1];
+        memcpy(commandByte, value.data() + 32, 1);
+        ClientCommand command = static_cast<ClientCommand>(commandByte[0]);
+
+        uint8_t additionalLength = value.data()[33];
+
+        std::string additionalDataString;
+
+        if (additionalLength > 0)
+        {
+            std::vector<uint8_t> additionalData(additionalLength);
+            memcpy(additionalData.data(), value.data() + 34, additionalLength);
+            additionalDataString = std::string(additionalData.begin(), additionalData.end());
 
             if (DEBUG_MODE)
-                Serial.println("Received command: " + command);
+                Serial.printf("Received additional data: %s\n", additionalDataString.c_str());
+        }
 
-            if (command == "VER")
-            {
-                pCharacteristic->setValue(("VER:" + PROTOCOL_VERSION).c_str());
-                pCharacteristic->notify();
-                return;
-            }
-            // Handle authentication
-            else if (command.startsWith("AUTH:"))
-            {
-                unsigned long currentMillis = millis();
+        if (DEBUG_MODE)
+            Serial.printf("Received command: 0x%02X\n", static_cast<uint8_t>(command));
 
-                // Check if cooldown period has passed
-                if (authAttempts >= 2 && (currentMillis - lastAuthAttemptMillis) < authCooldownMillis)
-                {
-                    pCharacteristic->setValue("AUTH_COOLD");
-                    pCharacteristic->notify();
-                    return;
-                }
-
-                String receivedPin = command.substring(5);
-                if (receivedPin == LOCK_PIN)
-                {
-                    isAuthenticated = true;
-                    pCharacteristic->setValue("AUTH_OK");
-                    pCharacteristic->notify();
-                    authAttempts = 0;
-                }
-                else
-                {
-                    authAttempts++;
-                    lastAuthAttemptMillis = currentMillis;
-                    pCharacteristic->setValue("AUTH_FAIL");
-                    pCharacteristic->notify();
-                }
-                return;
-            }
-
-            // Only process commands if authenticated
-            if (!isAuthenticated)
+        switch (command)
+        {
+        case ClientCommand::GET_VERSION:
+            sendToClinet(Esp32Response::VERSION, PROTOCOL_VERSION.c_str());
+            break;
+        case ClientCommand::GET_DATA:
+            sendToClinet(isLocked ? Esp32Response::LOCKED : Esp32Response::UNLOCKED);
+            break;
+        case ClientCommand::LOCK_DOORS:
+            lock();
+            break;
+        case ClientCommand::UNLOCK_DOORS:
+            unlock();
+            break;
+        case ClientCommand::OPEN_TRUNK:
+            openTrunk();
+            break;
+        case ClientCommand::START_ENGINE:
+            startEngine();
+            break;
+        case ClientCommand::PROXIMITY_KEY_ON:
+            enableProxKey();
+            break;
+        case ClientCommand::PROXIMITY_KEY_OFF:
+            disableProxKey();
+            break;
+        case ClientCommand::RSSI_TRIGGER:
+        {
+            if (additionalDataString.length() == 0)
             {
                 if (DEBUG_MODE)
-                    Serial.println("Not authenticated");
-                pCharacteristic->setValue("NOT_AUTH");
-                pCharacteristic->notify();
+                    Serial.println("No RSSI trigger data");
                 return;
             }
 
-            // Process authenticated commands
-            if (command == "SEND_DATA")
+            String additionalDataStringArd = String(additionalDataString.c_str()); // Use Arduino String to get util functions
+            int index = additionalDataStringArd.indexOf(',');
+            triggerRssiStrength = additionalDataStringArd.substring(0, index).toFloat();
+            rssiDeadZone = additionalDataStringArd.substring(index + 1).toInt();
+
+            triggerRssiStrength = triggerRssiStrength;
+            releaseRssiStrength = calculateReleaseRssi(triggerRssiStrength);
+
+            if (DEBUG_MODE)
             {
-                pCharacteristic->setValue(isLocked ? "LOCKED" : "UNLOCKED");
-                pCharacteristic->notify();
+                Serial.println("Trigger RSSI set: " + String(triggerRssiStrength));
+                Serial.println("Release RSSI set: " + String(releaseRssiStrength));
             }
-            else if (command == "LOCK")
+        }
+        break;
+        case ClientCommand::GET_RSSI:
+            sendRssi = true;
+            break;
+        case ClientCommand::PROXIMITY_COOLDOWN:
+        {
+            if (additionalDataString.length() == 0)
             {
-                lock();
-            }
-            else if (command == "UNLOCK")
-            {
-                unlock();
-            }
-            else if (command == "OPEN_TRUNK")
-            {
-                openTrunk();
-            }
-            else if (command == "START_ENGINE")
-            {
-                startEngine();
-            }
-            else if (command == "PROX_KEY_ON")
-            {
-                enableProxKey();
-            }
-            else if (command == "PROX_KEY_OFF")
-            {
-                disableProxKey();
-            }
-            else if (command.startsWith("RSSI_TRIG:"))
-            {
-                String data = command.substring(10);
-                int index = data.indexOf(',');
-                triggerRssiStrength = data.substring(0, index).toFloat();
-                rssiDeadZone = data.substring(index + 1).toInt();
-                triggerRssiStrength = command.substring(10).toFloat();
-                releaseRssiStrength = calculateReleaseRssi(triggerRssiStrength);
                 if (DEBUG_MODE)
-                {
-                    Serial.println("Trigger RSSI set: " + String(triggerRssiStrength));
-                    Serial.println("Release RSSI set: " + String(releaseRssiStrength));
-                }
+                    Serial.println("No RSSI trigger data");
+                return;
             }
-            else if (command == "RSSI")
-            {
-                sendRssi = true;
-            }
-            else if (command.startsWith("PROX_COOLD:"))
-            {
-                proximityCooldown = command.substring(11).toFloat();
-                if (DEBUG_MODE)
-                    Serial.println("Proximity cooldown set: " + String(proximityCooldown));
-            }
+
+            String additionalDataStringArd = String(additionalDataString.c_str()); // Use Arduino String to get util functions
+            proximityCooldown = additionalDataStringArd.toFloat();
+            if (DEBUG_MODE)
+                Serial.println("Proximity cooldown set: " + String(proximityCooldown));
+        }
+        break;
+
+        default:
+            break;
         }
     }
 };
@@ -310,8 +354,7 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 
         if (sendRssi)
         {
-            pCharacteristic->setValue(("RSSI:" + String(avgRSSI)).c_str());
-            pCharacteristic->notify();
+            sendToClinet(Esp32Response::RSSI, String(avgRSSI).c_str());
             sendRssi = false;
         }
 
@@ -348,6 +391,8 @@ void setupBluetooth()
 
     // Create the BLE Service
     BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    BLEDevice::setMTU(BLE_MTU_SIZE);
 
     // Create the BLE Characteristic
     pCharacteristic = pService->createCharacteristic(

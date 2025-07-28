@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:home_widget/home_widget.dart';
 
+import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import 'ble_background_service.dart';
@@ -24,16 +25,16 @@ class WidgetService {
   }
 
   /// Updates the widget with the new state of the current connected vehicle. (ONLY call from Background service isolate)
-  static void processMessage(String macAddress, String message) {
-    if (connectedVehicles.length < selectedVehicleIndex) {
+  static void processMessage(String macAddress, Esp32Response command) {
+    if (connectedVehicles.isEmpty || connectedVehicles.length < selectedVehicleIndex) {
       return;
     }
 
     if (macAddress ==
         connectedVehicles[selectedVehicleIndex].device.macAddress) {
-      if (message.startsWith('LOCKED')) {
+      if (command == Esp32Response.LOCKED) {
         connectedVehicles[selectedVehicleIndex].doorsLocked = true;
-      } else if (message.startsWith('UNLOCKED')) {
+      } else if (command == Esp32Response.UNLOCKED) {
         connectedVehicles[selectedVehicleIndex].doorsLocked = false;
       }
     }
@@ -114,16 +115,16 @@ class WidgetService {
 
       switch (actionType) {
         case 'lock':
-          BleBackgroundService.sendMessage(
-              BleDevice(macAddress: macAddress), 'LOCK');
+          BleBackgroundService.sendCommand(
+              BleDevice(macAddress: macAddress), ClientCommand.LOCK_DOORS);
           break;
         case 'unlock':
-          BleBackgroundService.sendMessage(
-              BleDevice(macAddress: macAddress), 'UNLOCK');
+          BleBackgroundService.sendCommand(
+              BleDevice(macAddress: macAddress), ClientCommand.UNLOCK_DOORS);
           break;
         case 'open_trunk':
-          BleBackgroundService.sendMessage(
-              BleDevice(macAddress: macAddress), 'OPEN_TRUNK');
+          BleBackgroundService.sendCommand(
+              BleDevice(macAddress: macAddress), ClientCommand.OPEN_TRUNK);
           break;
         case 'start_engine':
           //TODO: Implement engine start

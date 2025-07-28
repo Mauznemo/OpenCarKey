@@ -207,28 +207,34 @@ void bluetoothLoop()
 ```
 Loop need for bluetooth to work
 
-## Ble communication protocol (V1)
+## Ble communication protocol (V2)
 Communication protocol between ESP and App.
-| Message                                        | Response                                                         |
-| ---------------------------------------------- | ---------------------------------------------------------------- |
-| `VER`                                          | `VER:{Current protocol version}`                                 |
-| `AUTH:{Password String}`                       | `AUTH_OK`, `AUTH_FAIL` or `AUTH_COOLD` (too many wrong attempts) |
-| Anything else while not authenticated          | `NOT_AUTH`                                                       |
-| `SEND_DATA`                                    | `LOCKED` or `UNLOCKED`                                           |
-| `LOCK`                                         | `LOCKED`                                                         |
-| `UNLOCK`                                       | `UNLOCKED`                                                       |
-| `OPEN_TRUNK`                                   | None                                                             |
-| `START_ENGINE`                                 | None                                                             |
-| `PROX_KEY_ON`                                  | None                                                             |
-| `PROX_KEY_OFF`                                 | None                                                             |
-| `RSSI_TRIG:{Rssi float, Rssi dead zone float}` | None                                                             |
-| `PROX_COOLD:{Proximity cooldown float in min}` | None                                                             |
-| `RSSI`                                         | `RSSI:{Rssi float}` can take 500ms                               |
+### Message structure (from client/app):
+32 byte HMAC + 1 byte command (+ optional additional data sent as string)
 
-`RSSI_TRIG:` sets the **rssi strength** where proximity key will unlock and the **zone** (in rough meters) where nothing will happen. Eg. 5m: After the car was locked you have to get around 5m closer to it to unlock again. This is to prevent rapid locking and unlocking if you are at the exact trigger distance
+### Response structure (From ESP32)
+1 byte command  (+ optional additional data like sent as string)
 
-| Message from ESP | Description                              |
-| ---------------- | ---------------------------------------- |
-| `UNLOCKED_PROX`  | Vehicle was unlocked using proximity key |
-| `LOCKED_PROX`    | Vehicle was locked using proximity key   |
+| Message                                                         | Response                                         |
+| ----------------------------------------------------------------| ------------------------------------------------ |
+| `0x00` (GET_VERSION)                                            | `VERSION + {Current protocol version}` (VERSION) |
+| Anything with no/invalid rolling code (HMAC)                    | `0x00` (INVALID_HMAC)                            |
+| `0x01` (GET_DATA)                                               | `0x02` (LOCKED) or `0x04` (UNLOCKED)             |
+| `0x02` (LOCK_DOORS)                                             | `0x02` (LOCKED)                                  |
+| `0x03` (UNLOCK_DOORS)                                           | `0x04` (UNLOCKED)                                |
+| `0x04` (OPEN_TRUNK)                                             | None                                             |
+| `0x05` (START_ENGINE)                                           | None                                             |
+| `0x06` (STOP_ENGINE)                                            | None                                             |
+| `0x07` (PROXIMITY_KEY_ON)                                       | None                                             |
+| `0x08` (PROXIMITY_KEY_OFF)                                      | None                                             |
+| `0x09 + {Proximity cooldown float in min}` (PROXIMITY_COOLDOWN) | None                                             |
+| `0x0A + {Rssi float, Rssi dead zone float}` (RSSI_TRIGGER)      | None                                             |
+| `0x0B` (GET_RSSI)                                               | `0x06 + {Rssi float}` (RSSI) can take 500ms      |
+
+`RSSI_TRIGGER` (0x0A) sets the **rssi strength** where proximity key will unlock and the **zone** (in rough meters) where nothing will happen. Eg. 5m: After the car was locked you have to get around 5m closer to it to unlock again. This is to prevent rapid locking and unlocking if you are at the exact trigger distance
+
+| Message from ESP             | Description                              |
+| ---------------------------- | ---------------------------------------- |
+| `0x03` (PROXIMITY_LOCKED)    | Vehicle was locked using proximity key   |
+| `0x05` (PROXIMITY_UNLOCKED)  | Vehicle was unlocked using proximity key |
 

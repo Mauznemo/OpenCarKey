@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../types/ble_commands.dart';
+
 class BleService {
   static Future<void> requestBluetoothPermissions() async {
     if (await Permission.bluetoothScan.request().isGranted &&
@@ -78,14 +80,19 @@ class BleService {
     }
   }
 
-  static Future<BluetoothCharacteristic?> sendMessage(
-      BluetoothDevice device, String message) async {
+  /// Send a command to a device.
+  /// - [device] The device to send the command to.
+  /// - [command] The command to send.
+  /// - [additionalData] Additional data to send with the command (MAX 12 Bytes!).
+  static Future<BluetoothCharacteristic?> sendCommand(
+      BluetoothDevice device, ClientCommand command,
+      {String? additionalData}) async {
     try {
       if (!device.isConnected) {
         print('Device is not connected, isolate: ${Isolate.current.hashCode}');
         return null;
       }
-
+      await device.requestMtu(64);
       final services = await device.discoverServices();
       final service = services.firstWhere((service) =>
           service.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'));
@@ -94,10 +101,32 @@ class BleService {
               characteristic.uuid ==
               Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
 
-      print('Sending message: $message, isolate: ${Isolate.current.hashCode}');
-      await characteristic.write(utf8.encode(message));
-      final response = utf8.decode(await characteristic.read());
-      print('Response: $response');
+      final List<int> payloadBytes = <int>[];
+
+      // Add 32 dummy bytes for HMAC (will be replaced later)
+      payloadBytes.addAll(List.filled(32, 0)); // Placeholder for HMAC
+
+      payloadBytes.add(command.value);
+
+      if (additionalData != null) {
+        final List<int> stringBytes =
+            utf8.encode(additionalData); // eg. "10.22,115.22"
+
+        if (stringBytes.length > 12) {
+          print('Additional data is too long, truncating to 12 bytes.');
+          payloadBytes.add(12);
+          payloadBytes.addAll(stringBytes.sublist(0, 12));
+        } else {
+          payloadBytes.add(stringBytes.length);
+          payloadBytes.addAll(stringBytes);
+        }
+      }
+
+      print(
+          "Sending command: 0x${command.value.toRadixString(16)} with payload: $payloadBytes");
+
+      await characteristic.write(Uint8List.fromList(payloadBytes));
+      //final response = utf8.decode(await characteristic.read());
       return characteristic;
     } on PlatformException catch (e) {
       print('Error: ${e.message}');
@@ -106,9 +135,18 @@ class BleService {
   }
 }
 
-class MessageData {
+class Esp32ResponseDate {
+  final String macAddress;
+  final Esp32Response command;
+  final String? additionalData;
+
+  Esp32ResponseDate(
+      {required this.macAddress, required this.command, this.additionalData});
+}
+
+/*class MessageData {
   final String macAddress;
   final String message;
 
   MessageData(this.macAddress, this.message);
-}
+}*/

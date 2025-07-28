@@ -293,9 +293,6 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   if (connectedDevice == null)
                     return print('No device connected');
 
-                  BleBackgroundService.sendMessage(
-                      connectedDevice, 'AUTH:${pinController.text.trim()}');
-
                   VehicleStorage.addVehicle(
                     VehicleData(
                         name: vehicleNameController.text.trim(),

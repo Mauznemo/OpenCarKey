@@ -8,6 +8,7 @@ import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
 import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
+import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import '../utils/image_utils.dart';
@@ -85,9 +86,17 @@ class _HomePageState extends State<HomePage> {
     setState(() {});
   }
 
-  void processMessage(String macAddress, String message) {
-    if (message.startsWith('VER')) {
-      final deviceProtocolVersion = message.substring(4);
+  void processMessage(
+      String macAddress, Esp32Response? command, String? additionalData) {
+    if (command == null) {
+      print('Home Page: Received null command');
+      return;
+    }
+
+    print('Home Page: Received command: $command');
+
+    if (command == Esp32Response.VERSION) {
+      final deviceProtocolVersion = additionalData;
 
       if (deviceProtocolVersion == BleBackgroundService.PROTOCLOL_VERSION) {
         return;
@@ -127,9 +136,7 @@ class _HomePageState extends State<HomePage> {
                 ],
               ));
       setState(() {});
-    } else if (message.startsWith('NOT_AUTH') ||
-        message.startsWith('AUTH_FAIL') ||
-        message.startsWith('AUTH_COOLD')) {
+    } else if (command == Esp32Response.INVALID_HMAC) {
       if (notAuthenticatedDevices.contains(macAddress)) {
         return;
       }
@@ -137,10 +144,9 @@ class _HomePageState extends State<HomePage> {
       showDialog(
           context: context,
           builder: (context) => AlertDialog(
-                title: const Text('Not Authenticated'),
-                content: Text(message.startsWith('AUTH_COOLD')
-                    ? 'The device $macAddress you are trying to communicate with is not authenticated. Please make sure the pin is correct.'
-                    : 'Too many wrong authentication attempts on $macAddress. Please try again later.'),
+                title: const Text('Invalid HMAC'),
+                content:
+                    Text('Invalid HMAC/rolling code for device $macAddress.'),
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
@@ -148,17 +154,12 @@ class _HomePageState extends State<HomePage> {
                 ],
               ));
       setState(() {});
-    } else if (message.startsWith('AUTH_OK')) {
-      if (notAuthenticatedDevices.contains(macAddress)) {
-        notAuthenticatedDevices.remove(macAddress);
-        setState(() {});
-      }
-    } else if (message.startsWith('LOCKED')) {
+    } else if (command == Esp32Response.LOCKED) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
           .doorsLocked = true);
-    } else if (message.startsWith('UNLOCKED')) {
+    } else if (command == Esp32Response.UNLOCKED) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
@@ -169,9 +170,11 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    service.on('message_received').listen((event) {
+    service.on('command_received').listen((event) {
       if (event != null) {
-        processMessage(event['macAddress'], event['message']);
+        String? additionalData = event['additionalData'];
+        processMessage(event['macAddress'],
+            Esp32Response.fromValue(event['command']), additionalData);
       }
     });
     service.on('connection_state_changed').listen((event) {
@@ -388,11 +391,13 @@ class _HomePageState extends State<HomePage> {
                                                 vehicle.device.isConnected
                                                     ? () {
                                                         BleBackgroundService
-                                                            .sendMessage(
+                                                            .sendCommand(
                                                           vehicle.device,
                                                           vehicle.doorsLocked
-                                                              ? 'UNLOCK'
-                                                              : 'LOCK',
+                                                              ? ClientCommand
+                                                                  .UNLOCK_DOORS
+                                                              : ClientCommand
+                                                                  .LOCK_DOORS,
                                                         );
                                                       }
                                                     : null,
@@ -422,9 +427,10 @@ class _HomePageState extends State<HomePage> {
                                                       vehicle.device.isConnected
                                                           ? () {
                                                               BleBackgroundService
-                                                                  .sendMessage(
+                                                                  .sendCommand(
                                                                 vehicle.device,
-                                                                'OPEN_TRUNK',
+                                                                ClientCommand
+                                                                    .OPEN_TRUNK,
                                                               );
                                                             }
                                                           : null,

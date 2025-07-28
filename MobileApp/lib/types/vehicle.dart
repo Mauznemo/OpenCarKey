@@ -61,7 +61,7 @@ class VehicleData {
     return VehicleData(
       name: json['name'],
       macAddress: json['macAddress'],
-      pin: json['pin'],
+      pin: json['pin'] ?? '',
       hasTrunkUnlock: json['hasTrunkUnlock'],
       hasEngineStart: json['hasEngineStart'],
       noProximityKey: json['noProximityKey'] ?? false,

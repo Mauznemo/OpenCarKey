@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
+import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import 'ble_service.dart';
@@ -19,11 +20,12 @@ import 'widget_service.dart';
 
 @pragma('vm:entry-point')
 class BleBackgroundService {
-  static const PROTOCLOL_VERSION = 'V1';
+  static const PROTOCLOL_VERSION = 'V2';
 
   static List<BackgroundVehicle> vehicles = [];
-  static final ValueNotifier<MessageData> _onMessageReceived =
-      ValueNotifier<MessageData>(MessageData('', ''));
+  static final ValueNotifier<Esp32ResponseDate> _onMessageReceived =
+      ValueNotifier<Esp32ResponseDate>(Esp32ResponseDate(
+          macAddress: '', command: Esp32Response.INVALID_HMAC));
   static List<StreamSubscription?> _subscriptions = [];
   static final FlutterBackgroundService _service = FlutterBackgroundService();
   static late SharedPreferences _prefs;
@@ -152,17 +154,22 @@ class BleBackgroundService {
       bool enabled = event['enabled'];
       _proximityKeyEnabled = enabled;
 
-      String message = enabled ? 'PROX_KEY_ON' : 'PROX_KEY_OFF';
+      ClientCommand command = enabled
+          ? ClientCommand.PROXIMITY_KEY_ON
+          : ClientCommand.PROXIMITY_KEY_OFF;
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
-        await BleService.sendMessage(vehicle.device, message);
+        await BleService.sendCommand(vehicle.device, command);
         if (enabled) {
           await Future.delayed(Duration(milliseconds: 200));
-          await BleService.sendMessage(vehicle.device,
-              'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}');
+          await BleService.sendCommand(
+              vehicle.device, ClientCommand.RSSI_TRIGGER,
+              additionalData:
+                  '${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}');
           await Future.delayed(Duration(milliseconds: 200));
-          await BleService.sendMessage(vehicle.device,
-              'PROX_COOLD:${_proximityCooldown.toStringAsFixed(2)}');
+          await BleService.sendCommand(
+              vehicle.device, ClientCommand.PROXIMITY_COOLDOWN,
+              additionalData: '${_proximityCooldown.toStringAsFixed(2)}');
         }
       }
     });
@@ -173,8 +180,9 @@ class BleBackgroundService {
       _proximityCooldown = cooldown;
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
-        await BleService.sendMessage(
-            vehicle.device, 'PROX_COOLD:${cooldown.toStringAsFixed(2)}');
+        await BleService.sendCommand(
+            vehicle.device, ClientCommand.PROXIMITY_COOLDOWN,
+            additionalData: '${cooldown.toStringAsFixed(2)}');
       }
     });
 
@@ -187,9 +195,9 @@ class BleBackgroundService {
     service.on('send_data').listen((event) async {
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
-        await BleService.sendMessage(vehicle.device, 'SEND_DATA');
+        await BleService.sendCommand(vehicle.device, ClientCommand.GET_DATA);
         await Future.delayed(Duration(milliseconds: 200));
-        await BleService.sendMessage(vehicle.device, 'VER');
+        await BleService.sendCommand(vehicle.device, ClientCommand.GET_VERSION);
       }
     });
 
@@ -199,8 +207,9 @@ class BleBackgroundService {
       _deadZone = deadZone;
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
-        await BleService.sendMessage(vehicle.device,
-            'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${deadZone.toInt()}');
+        await BleService.sendCommand(vehicle.device, ClientCommand.RSSI_TRIGGER,
+            additionalData:
+                '${_proximityStrength.toStringAsFixed(2)},${deadZone.toInt()}');
       }
     });
 
@@ -210,8 +219,9 @@ class BleBackgroundService {
       _proximityStrength = strength;
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
-        await BleService.sendMessage(vehicle.device,
-            'RSSI_TRIG:${strength.toStringAsFixed(2)},${_deadZone.toInt()}');
+        await BleService.sendCommand(vehicle.device, ClientCommand.RSSI_TRIGGER,
+            additionalData:
+                '${strength.toStringAsFixed(2)},${_deadZone.toInt()}');
       }
     });
 
@@ -226,11 +236,15 @@ class BleBackgroundService {
       }
     });
 
-    service.on('send_message').listen((event) {
+    service.on('send_command').listen((event) {
       if (event == null) return;
       BluetoothDevice device = BluetoothDevice.fromId(event['macAddress']);
-      String message = event['message'];
-      BleService.sendMessage(device, message);
+      ClientCommand? command = ClientCommand.fromValue(event['command']);
+      String? additionalData = event['additionalData'];
+
+      if (command == null) return;
+
+      BleService.sendCommand(device, command, additionalData: additionalData);
     });
 
     service.on('disconnect_device').listen((event) {
@@ -285,6 +299,7 @@ class BleBackgroundService {
         await Future.delayed(Duration(milliseconds: 500));
 
         //Sub to notifications from the device
+        await event.device.requestMtu(64);
         final services = await event.device.discoverServices();
         final service = services.firstWhere((service) =>
             service.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'));
@@ -296,14 +311,52 @@ class BleBackgroundService {
         await characteristic.setNotifyValue(true);
         StreamSubscription? notificationSubscription =
             characteristic.onValueReceived.listen((value) {
-          _onMessageReceived.value =
-              MessageData(event.device.remoteId.str, utf8.decode(value));
+          if (value.isEmpty) {
+            print('Received empty value from characteristic.');
+            return;
+          }
+
+          final int commandByte = value[0];
+          final Esp32Response? command = Esp32Response.fromValue(commandByte);
+
+          if (command == null) {
+            print('Unknown command byte: $commandByte');
+            return;
+          }
+
+          String? additionalDataString;
+
+          if (value.length > 1) {
+            // The byte at index 1 (after the command byte) should be the string length.
+            final int stringLength = value[1];
+
+            // Ensure we have enough bytes for the declared string length
+            // Total expected length = 1 (command) + 1 (string_length_byte) + stringLength (data)
+            if (value.length >= (1 + 1 + stringLength)) {
+              // The string data starts from index 2
+              final List<int> stringBytes = value.sublist(2, 2 + stringLength);
+              additionalDataString = utf8.decode(stringBytes);
+            } else {
+              print(
+                  'Warning: Received truncated additional data for command ${command.name}. Expected ${1 + 1 + stringLength} bytes, got ${value.length}.');
+              // Handle truncated data, maybe assign a default or error string
+              additionalDataString = null; // Or an empty string if you prefer
+            }
+          }
+
+          _onMessageReceived.value = Esp32ResponseDate(
+            macAddress: event.device.remoteId
+                .str, // Assuming 'event' is available in this scope
+            command: command,
+            additionalData: additionalDataString,
+          );
         });
 
         _subscriptions
             .add(notificationSubscription); //TODO: remove if no longer needed
 
-        await BleService.sendMessage(changedVehicle.device, 'VER');
+        await BleService.sendCommand(
+            changedVehicle.device, ClientCommand.GET_VERSION);
         await Future.delayed(Duration(milliseconds: 200));
 
         if (_proximityKeyEnabled && !ignoreProximityKey) {
@@ -317,20 +370,26 @@ class BleBackgroundService {
               'Connected to ${changedVehicle.data.name}',
               '${changedVehicle.data.name} connected.');
         }
-        await BleService.sendMessage(
-            changedVehicle.device, 'AUTH:${changedVehicle.data.pin}');
-        await Future.delayed(Duration(milliseconds: 200));
-        await BleService.sendMessage(changedVehicle.device, 'SEND_DATA');
+
+        await BleService.sendCommand(
+            changedVehicle.device, ClientCommand.GET_DATA);
 
         if (_proximityKeyEnabled && !ignoreProximityKey) {
           await Future.delayed(Duration(milliseconds: 200));
-          await BleService.sendMessage(changedVehicle.device,
-              'RSSI_TRIG:${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}'); //
+
+          await BleService.sendCommand(
+              changedVehicle.device, ClientCommand.RSSI_TRIGGER,
+              additionalData:
+                  '${_proximityStrength.toStringAsFixed(2)},${_deadZone.toInt()}');
           await Future.delayed(Duration(milliseconds: 200));
-          await BleService.sendMessage(changedVehicle.device,
-              'PROX_COOLD:${_proximityCooldown.toStringAsFixed(2)}');
+
+          await BleService.sendCommand(
+              changedVehicle.device, ClientCommand.PROXIMITY_COOLDOWN,
+              additionalData: _proximityCooldown.toStringAsFixed(2));
           await Future.delayed(Duration(milliseconds: 200));
-          await BleService.sendMessage(changedVehicle.device, 'PROX_KEY_ON');
+
+          await BleService.sendCommand(
+              changedVehicle.device, ClientCommand.PROXIMITY_KEY_ON);
         }
 
         await BleDeviceStorage.addDevice(changedVehicle.device.remoteId.str);
@@ -371,14 +430,14 @@ class BleBackgroundService {
     });
 
     _onMessageReceived.addListener(() async {
-      final messageData = _onMessageReceived.value;
-      print('Message received: ${messageData.message}');
+      final espResponseData = _onMessageReceived.value;
+      print('Message received: ${espResponseData.command}');
 
-      if (messageData.message.startsWith('VER')) {
+      if (espResponseData.command == Esp32Response.VERSION) {
         await _prefs.reload();
         final ignoreProtocolMismatch =
             _prefs.getBool('ignoreProtocolMismatch') ?? false;
-        final deviceProtocolVersion = messageData.message.substring(4);
+        final deviceProtocolVersion = espResponseData.additionalData;
 
         print(
             'Device protocol version: $deviceProtocolVersion, ignoreProtocolMismatch: $ignoreProtocolMismatch');
@@ -386,7 +445,7 @@ class BleBackgroundService {
         if (deviceProtocolVersion != PROTOCLOL_VERSION &&
             !ignoreProtocolMismatch) {
           BackgroundVehicle? changedVehicle =
-              _getChangedVehicle(messageData.macAddress);
+              _getChangedVehicle(espResponseData.macAddress);
 
           if (changedVehicle != null) {
             int notificationId =
@@ -412,9 +471,9 @@ class BleBackgroundService {
         }
       }
 
-      if (messageData.message.startsWith('LOCKED_PROX')) {
+      if (espResponseData.command == Esp32Response.PROXIMITY_LOCKED) {
         BackgroundVehicle? changedVehicle =
-            _getChangedVehicle(messageData.macAddress);
+            _getChangedVehicle(espResponseData.macAddress);
 
         if (_vibrate) {
           _vibrateLongTwice();
@@ -424,9 +483,9 @@ class BleBackgroundService {
             flutterLocalNotificationsPlugin,
             'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Locked)',
             '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and locked since it is too far away.');
-      } else if (messageData.message.startsWith('UNLOCKED_PROX')) {
+      } else if (espResponseData.command == Esp32Response.PROXIMITY_UNLOCKED) {
         BackgroundVehicle? changedVehicle =
-            _getChangedVehicle(messageData.macAddress);
+            _getChangedVehicle(espResponseData.macAddress);
 
         if (_vibrate) {
           _vibrateLongTwice();
@@ -439,14 +498,16 @@ class BleBackgroundService {
       }
 
       service.invoke(
-        'message_received',
+        'command_received',
         {
-          'macAddress': messageData.macAddress,
-          'message': messageData.message,
+          'macAddress': espResponseData.macAddress,
+          'command': espResponseData.command.value,
+          'additionalData': espResponseData.additionalData,
         },
       );
 
-      WidgetService.processMessage(messageData.macAddress, messageData.message);
+      WidgetService.processMessage(
+          espResponseData.macAddress, espResponseData.command);
     });
 
     _getVehicles();
@@ -621,9 +682,12 @@ class BleBackgroundService {
     _service.invoke('disconnect_device', {'macAddress': device.macAddress});
   }
 
-  static void sendMessage(BleDevice device, String message) {
-    print('Sending message: $message');
-    _service.invoke(
-        'send_message', {'macAddress': device.macAddress, 'message': message});
+  static void sendCommand(BleDevice device, ClientCommand command,
+      {String? additionalData}) {
+    _service.invoke('send_command', {
+      'macAddress': device.macAddress,
+      'command': command.value,
+      'additionalData': additionalData
+    });
   }
 }
