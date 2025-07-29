@@ -502,6 +502,11 @@ class _HomePageState extends State<HomePage> {
                                   VehicleStorage.removeVehicle(
                                       vehicle.data.macAddress);
 
+                                  prefs.remove(
+                                      'counter_${vehicle.device.macAddress}');
+                                  print(
+                                      'removing counter: counter_${vehicle.device.macAddress}');
+
                                   setState(() => vehicles.removeAt(index));
 
                                   BleBackgroundService.reloadVehicles();

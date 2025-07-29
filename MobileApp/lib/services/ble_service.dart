@@ -1,15 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../types/ble_commands.dart';
+import 'ble_background_service.dart';
 
 class BleService {
+  static SharedPreferences? _prefs;
+
   static Future<void> requestBluetoothPermissions() async {
     if (await Permission.bluetoothScan.request().isGranted &&
         await Permission.bluetoothConnect.request().isGranted &&
@@ -81,17 +86,31 @@ class BleService {
     }
   }
 
+  static void reloadPrefs() async {
+    await _prefs?.reload();
+  }
+
+  static Future<SharedPreferences> _getPrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
+  /// Generate HMAC-SHA256 for a counter and 1-byte command
+  static Uint8List generateHmac(
+      int counter, ClientCommand command, Uint8List sharedSecret) {
+    final counterBytes = Uint8List(4)
+      ..buffer.asByteData().setUint32(0, counter, Endian.little);
+    final commandBytes = Uint8List(1)..[0] = command.value;
+    final data = Uint8List.fromList([...counterBytes, ...commandBytes]);
+    final hmac = Hmac(sha256, sharedSecret);
+    return Uint8List.fromList(hmac.convert(data).bytes);
+  }
+
   static Uint8List generateSharedSecret(String password) {
-    // Convert input to UTF-8 bytes
     final inputBytes = utf8.encode(password);
-
-    // Compute SHA-256 hash
     final digest = sha256.convert(inputBytes);
-
-    // Get the 32-byte key as Uint8List
     final key = Uint8List.fromList(digest.bytes);
 
-    // Print the key in hexadecimal
     print(
         'Generated 32-byte key (from: $password): ${key.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
@@ -107,7 +126,7 @@ class BleService {
       {String? additionalData}) async {
     try {
       if (!device.isConnected) {
-        print('Device is not connected, isolate: ${Isolate.current.hashCode}');
+        print('Device is not connected');
         return null;
       }
       await device.requestMtu(64);
@@ -119,10 +138,26 @@ class BleService {
               characteristic.uuid ==
               Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
 
+      final vehicle = BleBackgroundService.vehicles.firstWhere(
+          (vehicle) => vehicle.device.remoteId.str == device.remoteId.str);
+      final sharedSecret = vehicle.data.sharedSecret;
+
       final List<int> payloadBytes = <int>[];
 
-      // Add 32 dummy bytes for HMAC (will be replaced later)
-      payloadBytes.addAll(List.filled(32, 0)); // Placeholder for HMAC
+      final prefs = await _getPrefs();
+
+      if (characteristic.device.isDisconnected) {
+        print('Device is not connected');
+
+        return null;
+      }
+
+      var counter = prefs.getInt('counter_${device.remoteId.str}') ?? 0;
+      counter++;
+      prefs.setInt('counter_${device.remoteId.str}', counter);
+      print('updated counter: counter_${device.remoteId.str}');
+      final hmac = generateHmac(counter, command, sharedSecret);
+      payloadBytes.addAll(hmac);
 
       payloadBytes.add(command.value);
 
@@ -141,10 +176,22 @@ class BleService {
       }
 
       print(
-          "Sending command: 0x${command.value.toRadixString(16)} with payload: $payloadBytes");
+          "Sending command: 0x${command.value.toRadixString(16)} counter at $counter with payload: $payloadBytes");
+      print(
+          'Shared secret: ${sharedSecret.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
-      await characteristic.write(Uint8List.fromList(payloadBytes));
+      try {
+        await characteristic.write(Uint8List.fromList(payloadBytes));
+      } catch (e) {
+        print('Error writing to characteristic (revering counter): $e');
+        var counter = prefs.getInt('counter_${device.remoteId.str}') ?? 0;
+        counter--;
+        prefs.setInt('counter_${device.remoteId.str}', counter);
+        return null;
+      }
+
       //final response = utf8.decode(await characteristic.read());
+
       return characteristic;
     } on PlatformException catch (e) {
       print('Error: ${e.message}');

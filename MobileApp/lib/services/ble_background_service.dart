@@ -227,6 +227,7 @@ class BleBackgroundService {
 
     service.on('reload_vehicles').listen((event) async {
       await VehicleStorage.reloadPrefs();
+      BleService.reloadPrefs();
       _getVehicles();
     });
 

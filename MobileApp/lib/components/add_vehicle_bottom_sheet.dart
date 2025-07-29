@@ -311,6 +311,7 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   if (context.mounted) Navigator.pop(context);
                   setState(() {});
 
+                  BleBackgroundService.reloadVehicles();
                   BleBackgroundService.reloadHomescreenWidget();
                 },
                 icon: Icon(Icons.add),

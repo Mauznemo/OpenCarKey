@@ -350,6 +350,7 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                   if (context.mounted) Navigator.pop(context);
                   setState(() {});
 
+                  BleBackgroundService.reloadVehicles();
                   BleBackgroundService.reloadHomescreenWidget();
                 },
                 icon: Icon(Icons.check),

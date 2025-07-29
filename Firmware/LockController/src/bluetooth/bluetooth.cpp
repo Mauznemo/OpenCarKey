@@ -7,6 +7,8 @@
 #include "esp_gap_ble_api.h"
 #include "commands.h"
 #include <mbedtls/sha256.h>
+#include <mbedtls/md.h>
+#include <SPIFFS.h>
 
 #define BLE_MTU_SIZE 64
 // BLE service and characteristic UUIDs
@@ -22,6 +24,7 @@ BLECharacteristic *pCharacteristic = NULL;
 esp_bd_addr_t peerAddress;
 
 uint8_t sharedSecret[32];
+uint32_t counter = 0;
 
 void (*onConnected)() = nullptr;
 void (*onDisconnected)() = nullptr;
@@ -212,6 +215,42 @@ class MyServerCallbacks : public BLEServerCallbacks
     }
 };
 
+void writeCounter(uint32_t count)
+{
+    File file = SPIFFS.open("/counter", "w"); // Using SPIFFS to avoid wearing flash sinc it has way more sectores
+    file.print(count);
+    file.close();
+}
+
+uint32_t readCounter()
+{
+    File file = SPIFFS.open("/counter", "r");
+    uint32_t count = file.parseInt();
+    file.close();
+    return count;
+}
+
+// Generate HMAC-SHA256 for a counter and 1-byte command
+void generateHMAC(uint32_t counter, uint8_t command, uint8_t *hmac)
+{
+    mbedtls_md_context_t ctx;
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1); // 1 = HMAC
+    mbedtls_md_hmac_starts(&ctx, sharedSecret, 32);
+    mbedtls_md_hmac_update(&ctx, (const uint8_t *)&counter, sizeof(counter));
+    mbedtls_md_hmac_update(&ctx, &command, 1);
+    mbedtls_md_hmac_finish(&ctx, hmac);
+    mbedtls_md_free(&ctx);
+}
+
+// Verify HMAC-SHA256 for a counter and 1-byte command
+bool verifyHMAC(uint32_t counter, uint8_t command, const uint8_t *received_hmac)
+{
+    uint8_t expected_hmac[32];
+    generateHMAC(counter, command, expected_hmac);
+    return memcmp(received_hmac, expected_hmac, 32) == 0;
+}
+
 class MyCallbacks : public BLECharacteristicCallbacks
 {
     void onWrite(BLECharacteristic *pCharacteristic)
@@ -229,14 +268,12 @@ class MyCallbacks : public BLECharacteristicCallbacks
         if (length < 33)
         { // Minimum for HMAC + Command
             Serial.println("Received malformed client command: too short.");
-            // TODO: send error
+            sendToClinet(Esp32Response::INVALID_HMAC);
             return;
         }
 
         uint8_t receivedHmac[32];
         memcpy(receivedHmac, value.data(), 32);
-
-        // TODO: Check HMAC
 
         uint8_t commandByte[1];
         memcpy(commandByte, value.data() + 32, 1);
@@ -245,6 +282,27 @@ class MyCallbacks : public BLECharacteristicCallbacks
         uint8_t additionalLength = value.data()[33];
 
         std::string additionalDataString;
+
+        // Verify HMAC with a window of 10 counters to handle small desyncs
+        bool valid = false;
+        for (int i = 0; i < 10; i++)
+        {
+            if (verifyHMAC(counter + i, commandByte[0], receivedHmac))
+            {
+                valid = true;
+                counter = counter + i + 1;
+                writeCounter(counter);
+                break;
+            }
+        }
+
+        if (!valid)
+        {
+            if (DEBUG_MODE)
+                Serial.println("Received invalid HMAC. Tested counters: " + String(counter) + "-" + String(counter + 10));
+            sendToClinet(Esp32Response::INVALID_HMAC);
+            return;
+        }
 
         if (additionalLength > 0)
         {
@@ -299,7 +357,6 @@ class MyCallbacks : public BLECharacteristicCallbacks
             triggerRssiStrength = additionalDataStringArd.substring(0, index).toFloat();
             rssiDeadZone = additionalDataStringArd.substring(index + 1).toInt();
 
-            triggerRssiStrength = triggerRssiStrength;
             releaseRssiStrength = calculateReleaseRssi(triggerRssiStrength);
 
             if (DEBUG_MODE)
@@ -385,6 +442,15 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 
 void setupBluetooth()
 {
+    if (SPIFFS.begin())
+    {
+        counter = readCounter();
+    }
+    else if (DEBUG_MODE)
+    {
+        Serial.println("SPIFFS Mount Failed");
+    }
+
     // Generate 32-byte HMAC key
     mbedtls_sha256((const unsigned char *)PASSWORD, strlen(PASSWORD), sharedSecret, 0);
 
