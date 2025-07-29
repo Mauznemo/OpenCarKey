@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../services/ble_background_service.dart';
+import '../services/ble_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/vehicle.dart';
+import '../utils/image_utils.dart';
+import 'custom_text_form_field.dart';
 
 typedef EditVehicleBottomSheetCallback = void Function(Vehicle vehicle);
 
@@ -30,27 +35,81 @@ class EditVehicleBottomSheet extends StatefulWidget {
 class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
   final formKey = GlobalKey<FormState>();
   final vehicleNameController = TextEditingController();
-  final pinController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  File? _selectedImage;
+  String imagePath = '';
 
   bool hasTrunkUnlock = false;
   bool hasEngineStart = false;
 
+  bool noProximityKey = false;
+
   bool isValid = true;
+
+  Future<void> loadImage() async {
+    _selectedImage =
+        await ImageUtils.loadSavedImage(widget.vehicle.data.imagePath);
+    setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
     vehicleNameController.text = widget.vehicle.data.name;
-    pinController.text = widget.vehicle.data.pin;
+    passwordController.text = widget.vehicle.data.password;
     hasTrunkUnlock = widget.vehicle.data.hasTrunkUnlock;
     hasEngineStart = widget.vehicle.data.hasEngineStart;
+    noProximityKey = widget.vehicle.data.noProximityKey;
+    imagePath = widget.vehicle.data.imagePath;
+
+    loadImage();
   }
 
   @override
   void dispose() {
     vehicleNameController.dispose();
-    pinController.dispose();
+    passwordController.dispose();
     super.dispose();
+  }
+
+  void _showImageSourceOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext mContext) {
+        final rootContext = context;
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Gallery'),
+                onTap: () async {
+                  Navigator.pop(mContext);
+                  await ImageUtils.deleteImage(imagePath);
+                  _selectedImage =
+                      await ImageUtils.pickImageFromGallery(rootContext);
+                  setState(() {});
+                  imagePath = _selectedImage?.path ?? '';
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.camera_alt),
+                title: Text('Camera'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await ImageUtils.deleteImage(imagePath);
+                  _selectedImage =
+                      await ImageUtils.pickImageFromCamera(rootContext);
+                  setState(() {});
+                  imagePath = _selectedImage?.path ?? '';
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -77,34 +136,128 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
             ),
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: TextFormField(
+              child: CustomTextFormField(
                 controller: vehicleNameController,
+                labelText: 'Vehicle Name',
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a vehicle name';
                   }
                   return null;
                 },
-                decoration: const InputDecoration(
-                  border: UnderlineInputBorder(),
-                  labelText: 'Vehicle Name',
-                ),
               ),
             ),
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: TextFormField(
-                controller: pinController,
+              child: CustomTextFormField(
+                controller: passwordController,
+                labelText: 'Password',
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter a pin';
+                    return 'Please enter a password';
                   }
                   return null;
                 },
-                decoration: InputDecoration(
-                  border: UnderlineInputBorder(),
-                  labelText: 'Pin',
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                width: double.infinity,
+                height: 100,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(50),
                 ),
+                child: _selectedImage != null
+                    ? Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(50),
+                            child: Image.file(
+                              _selectedImage!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 10),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withAlpha(150),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  onPressed: () => _showImageSourceOptions(),
+                                  icon: Icon(Icons.edit,
+                                      color: Colors.white, size: 25),
+                                  padding: EdgeInsets.all(4),
+                                  constraints: BoxConstraints(
+                                      minWidth: 32, minHeight: 32),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withAlpha(150),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  onPressed: () async {
+                                    await ImageUtils.deleteImage(imagePath);
+                                    imagePath = '';
+                                    _selectedImage = null;
+                                    setState(() {});
+                                  },
+                                  icon: Icon(Icons.delete,
+                                      color: Colors.white, size: 25),
+                                  padding: EdgeInsets.all(4),
+                                  constraints: BoxConstraints(
+                                      minWidth: 32, minHeight: 32),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : InkWell(
+                        onTap: _showImageSourceOptions,
+                        borderRadius: BorderRadius.circular(50),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.add_a_photo,
+                                size: 30,
+                                color: Colors.grey,
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                'No background image selected',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
               ),
             ),
             Row(
@@ -119,9 +272,12 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                   },
                 ),
                 SizedBox(width: 10),
-                const Text(
-                  'Has Trunk Unlock',
-                  style: TextStyle(fontSize: 16),
+                SizedBox(
+                  width: 180,
+                  child: const Text(
+                    'Has Trunk Unlock',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ],
             ),
@@ -137,9 +293,33 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                   },
                 ),
                 SizedBox(width: 10),
-                const Text(
-                  'Has Remote Engine Start',
-                  style: TextStyle(fontSize: 16),
+                SizedBox(
+                  width: 180,
+                  child: const Text(
+                    'Has Remote Engine Start',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Switch(
+                  value: noProximityKey,
+                  onChanged: (value) {
+                    setState(() {
+                      noProximityKey = value;
+                    });
+                  },
+                ),
+                SizedBox(width: 10),
+                SizedBox(
+                  width: 180,
+                  child: const Text(
+                    'Ignore Proximity Key',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ],
             ),
@@ -152,19 +332,26 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
 
                   if (!isValid) return;
 
-                  BleBackgroundService.sendMessage(
-                      widget.vehicle.device, 'AUTH:${pinController.text}');
+                  final sharedSecret = BleService.generateSharedSecret(
+                      passwordController.text.trim());
 
                   await VehicleStorage.updateVehicle(VehicleData(
                       name: vehicleNameController.text,
                       macAddress: widget.vehicle.data.macAddress,
-                      pin: pinController.text,
+                      password: passwordController.text.trim(),
+                      sharedSecret: sharedSecret,
                       hasTrunkUnlock: hasTrunkUnlock,
-                      hasEngineStart: hasEngineStart));
+                      hasEngineStart: hasEngineStart,
+                      noProximityKey: noProximityKey,
+                      imagePath: imagePath));
+
                   vehicleNameController.clear();
-                  pinController.clear();
+                  passwordController.clear();
                   if (context.mounted) Navigator.pop(context);
                   setState(() {});
+
+                  BleBackgroundService.reloadVehicles();
+                  BleBackgroundService.reloadHomescreenWidget();
                 },
                 icon: Icon(Icons.check),
                 label: Text('Done')),

@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../components/custom_dropdown_button.dart';
 import '../services/ble_background_service.dart';
 import '../services/vehicle_service.dart';
+import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 
@@ -59,7 +61,8 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
 
   void readSignalStrength() async {
     if (selectedVehicle == null) return;
-    BleBackgroundService.sendMessage(selectedVehicle!.device, 'RSSI');
+    BleBackgroundService.sendCommand(
+        selectedVehicle!.device, ClientCommand.GET_RSSI);
   }
 
   @override
@@ -103,9 +106,8 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
                 'Select a vehicle to use as reference (needs to be connected)',
               ),
             ),
-            DropdownButton<Vehicle>(
+            CustomDropdownButton<Vehicle>(
               value: selectedVehicle,
-              isExpanded: true,
               hint: const Text('Select a device'),
               onChanged: (Vehicle? newValue) {
                 setState(() {

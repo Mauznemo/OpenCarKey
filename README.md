@@ -2,24 +2,31 @@
 
 OpenCarKey is an open source project to make your own DIY remote car key or keyless entry.
 
+>[!CAUTION]
+>**Disclaimer:** This project is currently in the development phase, so it my still contain some bugs and is not fully done yet.
+
+If you plan to use the app you can help by filling out this quick [survey](https://forms.gle/NZScbn8mKhP7yUqp9) about what features should be added to it. 
+
+If you need help or have more feature ideas you can join the [Discord](https://discord.gg/dYf8zrVUHt)!
+
 ## Features:
 ### Current
 - App to lock, unlock, open the trunk or remote start the engine from your phone
-- Proximity key to auto lock and unlock your car if you are near it
+- Proximity key (with customizable trigger range) to auto lock and unlock your car if you are near it
 - Support for multiple vehicles
+- Home screen widget
 - ESP32 counterpart to the app
 
 <div style="display: flex; gap: 10px;">
-  <img src="Docs/Images/screenshot_home.png" width="200" height="auto">
-  <img src="Docs/Images/screenshot_edit.png" width="200" height="auto">
-  <img src="Docs/Images/screenshot_settings.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_home_OLrFi.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_edit_OLrFi.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_settings_NWhqX.png" width="200" height="auto">
+  <img src="Docs/Images/screenshot_widget_io2lu.png" width="200" height="auto">
 </div>
 
 ### Planned
-- Also support/fully switch to ESP32 instead of Arduino Nano
-- Hardware keyfob using an ESP32 as alternative for the phone
+- Hardware keyfob using an ESP32 as alternative for the phone (one keyfob for all your cars using OpenCarKey)
 - Get at least some support for IOS (as far as possible with is limitations)
-- Ability to add multiple vehicles and switch between them
 - Auto save parking location if car gets out of range
 
 ## Getting Started
@@ -27,7 +34,7 @@ OpenCarKey is an open source project to make your own DIY remote car key or keyl
 Clone the repo and open the `MobileApp` directory in Android Studio or your preferred code editor that supports Flutter.
 
 ### ESP32 Lock Controller
-Clone the repo and open `Firmware/LockController/ESP32` with [PlatformIO](https://platformio.org/platformio-ide).
+Clone the repo and open `Firmware/LockController/` with [PlatformIO](https://platformio.org/platformio-ide).
 Now you can add custom code for locking, unlocking etc. more info [here](Docs/LockController.md#custom-code-for-locking-unlocking-etc).
 Then you can open the `platformio.ini` file and change `LOCK_PIN` to any password you want.
 Now you can connect you ESP32 and upload the code and then connect it with the app.
