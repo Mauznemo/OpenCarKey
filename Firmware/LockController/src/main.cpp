@@ -1,6 +1,6 @@
 // Lock Controller code for ESP32 (Not tested yet!)
 #include <Arduino.h>
-#include "bluetooth.h"
+#include "bluetooth/bluetooth.h"
 #include <ESP32Servo.h>
 
 // Pin definitions
