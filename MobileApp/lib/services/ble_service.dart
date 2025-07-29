@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -78,6 +79,23 @@ class BleService {
       print('Error: ${e.message}');
       return [];
     }
+  }
+
+  static Uint8List generateSharedSecret(String password) {
+    // Convert input to UTF-8 bytes
+    final inputBytes = utf8.encode(password);
+
+    // Compute SHA-256 hash
+    final digest = sha256.convert(inputBytes);
+
+    // Get the 32-byte key as Uint8List
+    final key = Uint8List.fromList(digest.bytes);
+
+    // Print the key in hexadecimal
+    print(
+        'Generated 32-byte key (from: $password): ${key.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+
+    return key;
   }
 
   /// Send a command to a device.

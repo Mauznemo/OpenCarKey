@@ -30,7 +30,7 @@ class AddVehicleBottomSheet extends StatefulWidget {
 class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
   final formKey = GlobalKey<FormState>();
   final vehicleNameController = TextEditingController();
-  final pinController = TextEditingController();
+  final passwordController = TextEditingController();
 
   bool hasTrunkUnlock = false;
   bool hasEngineStart = false;
@@ -43,7 +43,7 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
   @override
   void dispose() {
     vehicleNameController.dispose();
-    pinController.dispose();
+    passwordController.dispose();
     super.dispose();
   }
 
@@ -124,11 +124,11 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: CustomTextFormField(
-                controller: pinController,
-                labelText: 'Pin',
+                controller: passwordController,
+                labelText: 'Password',
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter a pin';
+                    return 'Please enter a password';
                   }
                   return null;
                 },
@@ -293,17 +293,21 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   if (connectedDevice == null)
                     return print('No device connected');
 
+                  final sharedSecret = BleService.generateSharedSecret(
+                      passwordController.text.trim());
+
                   VehicleStorage.addVehicle(
                     VehicleData(
                         name: vehicleNameController.text.trim(),
                         macAddress: connectedDevice.macAddress,
-                        pin: pinController.text.trim(),
+                        password: passwordController.text.trim(),
+                        sharedSecret: sharedSecret,
                         hasTrunkUnlock: hasTrunkUnlock,
                         hasEngineStart: hasEngineStart,
                         imagePath: imagePath),
                   );
                   vehicleNameController.clear();
-                  pinController.clear();
+                  passwordController.clear();
                   if (context.mounted) Navigator.pop(context);
                   setState(() {});
 

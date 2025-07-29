@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
@@ -41,7 +42,8 @@ class BackgroundVehicle {
 class VehicleData {
   final String name;
   final String macAddress;
-  final String pin;
+  final String password;
+  final Uint8List sharedSecret;
   final bool hasTrunkUnlock;
   final bool hasEngineStart;
   final bool noProximityKey;
@@ -50,7 +52,8 @@ class VehicleData {
   VehicleData({
     required this.name,
     required this.macAddress,
-    required this.pin,
+    required this.password,
+    required this.sharedSecret,
     required this.hasTrunkUnlock,
     required this.hasEngineStart,
     this.noProximityKey = false,
@@ -61,7 +64,9 @@ class VehicleData {
     return VehicleData(
       name: json['name'],
       macAddress: json['macAddress'],
-      pin: json['pin'] ?? '',
+      password: json['password'] ?? '',
+      sharedSecret: Uint8List.fromList(
+          (json['sharedSecret'] as List<dynamic>).cast<int>()),
       hasTrunkUnlock: json['hasTrunkUnlock'],
       hasEngineStart: json['hasEngineStart'],
       noProximityKey: json['noProximityKey'] ?? false,
@@ -73,7 +78,8 @@ class VehicleData {
     return {
       'name': name,
       'macAddress': macAddress,
-      'pin': pin,
+      'password': password,
+      'sharedSecret': sharedSecret.toList(),
       'hasTrunkUnlock': hasTrunkUnlock,
       'hasEngineStart': hasEngineStart,
       'noProximityKey': noProximityKey,

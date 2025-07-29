@@ -6,6 +6,7 @@
 #include "bluetooth.h"
 #include "esp_gap_ble_api.h"
 #include "commands.h"
+#include <mbedtls/sha256.h>
 
 #define BLE_MTU_SIZE 64
 // BLE service and characteristic UUIDs
@@ -19,6 +20,8 @@ const std::string PROTOCOL_VERSION = "V2";
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
 esp_bd_addr_t peerAddress;
+
+uint8_t sharedSecret[32];
 
 void (*onConnected)() = nullptr;
 void (*onDisconnected)() = nullptr;
@@ -382,6 +385,19 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 
 void setupBluetooth()
 {
+    // Generate 32-byte HMAC key
+    mbedtls_sha256((const unsigned char *)PASSWORD, strlen(PASSWORD), sharedSecret, 0);
+
+    if (DEBUG_MODE)
+    {
+        Serial.print("Generated 32-byte key (from: " + String(PASSWORD) + "): ");
+        for (int i = 0; i < 32; i++)
+        {
+            Serial.printf("%02x", sharedSecret[i]);
+        }
+        Serial.println();
+    }
+
     // Create the BLE Device
     BLEDevice::init(DEVICE_NAME);
 
