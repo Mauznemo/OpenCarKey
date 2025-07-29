@@ -107,12 +107,13 @@ class BleService {
   }
 
   static Uint8List generateSharedSecret(String password) {
-    final inputBytes = utf8.encode(password);
+    String cleanedPassword = password.replaceAll('\u0000', '');
+    final inputBytes = utf8.encode(cleanedPassword);
     final digest = sha256.convert(inputBytes);
     final key = Uint8List.fromList(digest.bytes);
 
     print(
-        'Generated 32-byte key (from: $password): ${key.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+        'Generated 32-byte key (from: $cleanedPassword): ${key.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 
     return key;
   }
