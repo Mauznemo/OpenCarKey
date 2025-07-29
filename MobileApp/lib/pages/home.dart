@@ -145,8 +145,8 @@ class _HomePageState extends State<HomePage> {
           context: context,
           builder: (context) => AlertDialog(
                 title: const Text('Invalid HMAC'),
-                content:
-                    Text('Invalid HMAC/rolling code for device $macAddress.'),
+                content: Text(
+                    'Invalid HMAC/rolling code for device $macAddress. Please remove the vehicle then hold down the button labeled BOOT on yor ESP32 for 5 sec and re-add it to the app.'),
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
@@ -333,7 +333,7 @@ class _HomePageState extends State<HomePage> {
                                       if (notAuthenticatedDevices.contains(
                                           vehicle.device.macAddress.toString()))
                                         Tooltip(
-                                          message: 'Device not authenticated.',
+                                          message: 'Invalid HMAC',
                                           triggerMode: TooltipTriggerMode.tap,
                                           showDuration: Duration(seconds: 2),
                                           child: Icon(
@@ -498,6 +498,12 @@ class _HomePageState extends State<HomePage> {
                                   if (!(await confirmed)) return;
                                   print(
                                       'Deleting vehicle: ${vehicle.data.name}');
+
+                                  if (notAuthenticatedDevices
+                                      .contains(vehicle.device.macAddress)) {
+                                    notAuthenticatedDevices
+                                        .remove(vehicle.device.macAddress);
+                                  }
 
                                   VehicleStorage.removeVehicle(
                                       vehicle.data.macAddress);

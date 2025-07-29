@@ -40,6 +40,10 @@ bool autoLocking = false;
 
 bool oldDeviceConnected = false;
 
+const int bootButtonPin = 0;
+unsigned long bootButtonPressStart = 0;
+bool isBootButtonPressed = false;
+
 float triggerRssiStrength = 0;
 float releaseRssiStrength = 0;
 float lastRssiStrength = 0;
@@ -451,6 +455,8 @@ void setupBluetooth()
         Serial.println("SPIFFS Mount Failed");
     }
 
+    pinMode(bootButtonPin, INPUT_PULLUP);
+
     // Generate 32-byte HMAC key
     mbedtls_sha256((const unsigned char *)PASSWORD, strlen(PASSWORD), sharedSecret, 0);
 
@@ -516,9 +522,37 @@ void readRssi()
     }
 }
 
+void readBootButton()
+{
+    if (digitalRead(bootButtonPin) == LOW)
+    {
+        if (!isBootButtonPressed)
+        {
+            if (DEBUG_MODE)
+                Serial.println("BOOT Pressed. hold for 5 seconds to reset rolling code counter");
+            bootButtonPressStart = millis();
+            isBootButtonPressed = true;
+        }
+        else if (millis() - bootButtonPressStart >= 3000)
+        {
+            if (DEBUG_MODE)
+                Serial.println("Resseting rolling code counter");
+
+            counter = 0;
+            writeCounter(counter);
+            delay(1000);
+        }
+    }
+    else
+    {
+        isBootButtonPressed = false;
+    }
+}
+
 void bluetoothLoop()
 {
     readRssi();
+    readBootButton();
 
     if (!deviceConnected && oldDeviceConnected)
     {
