@@ -57,10 +57,8 @@ void checkSerial()
 
 void setup()
 {
-  if (DEBUG_MODE)
-    // Serial.println("Starting BLE Lock Controller (Protocol version: " + PROTOCOL_VERSION + ")");
-    // Initialize pins
-    pinMode(doorsRelayPin1, OUTPUT);
+  // Initialize pins
+  pinMode(doorsRelayPin1, OUTPUT);
   pinMode(doorsRelayPin2, OUTPUT);
   pinMode(trunkRelayPin1, OUTPUT);
 
