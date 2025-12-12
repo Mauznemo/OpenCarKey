@@ -16,12 +16,10 @@ extern void (*onTrunkOpened)();
 extern void (*onEngineStarted)();
 
 /// @brief Version of the bluetooth protocol
-extern const String PROTOCOL_VERSION;
+extern const std::string PROTOCOL_VERSION;
 
 /// @brief Is the ESP is connected to the phone
 extern bool deviceConnected;
-/// @brief Is the currently connected phone authenticated
-extern bool isAuthenticated;
 /// @brief Is proximity key enabled
 extern bool autoLocking;
 /// @brief Is the car locked

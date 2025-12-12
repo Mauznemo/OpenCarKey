@@ -2,6 +2,10 @@
 
 OpenCarKey is an open source project to make your own DIY remote car key or keyless entry.
 
+>[!WARNING]
+>For better security and to prevent replay attacks commands are now sent with an HMAC and rolling code, there might still be issues with for example the counter getting out of sync.
+>If this happens to you please create an issues with exactly what you did. To rest the counter hold the `BOOT` button on the EPS32 for 5 sec and tap the rest button when the app prompts you.
+
 >[!CAUTION]
 >**Disclaimer:** This project is currently in the development phase, so it my still contain some bugs and is not fully done yet.
 
@@ -16,6 +20,7 @@ If you need help or have more feature ideas you can join the [Discord](https://d
 - Support for multiple vehicles
 - Home screen widget
 - ESP32 counterpart to the app
+- Authenticated commands with an HMAC that includes a per-device increasing counter (rolling codes) to prevent replay attacks.
 
 <div style="display: flex; gap: 10px;">
   <img src="Docs/Images/screenshot_home_OLrFi.png" width="200" height="auto">

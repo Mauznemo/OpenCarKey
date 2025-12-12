@@ -7,7 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
 import '../services/ble_background_service.dart';
+import '../services/ble_service.dart';
+import '../utils/esp32_response_parser.dart';
 import '../services/vehicle_service.dart';
+import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
 import '../utils/image_utils.dart';
@@ -85,18 +88,20 @@ class _HomePageState extends State<HomePage> {
     setState(() {});
   }
 
-  void processMessage(String macAddress, String message) {
-    if (message.startsWith('VER')) {
-      final deviceProtocolVersion = message.substring(4);
+  void processMessage(Esp32ResponseDate data) {
+    print('Home Page: Received command: ${data.command}');
 
-      if (deviceProtocolVersion == BleBackgroundService.PROTOCLOL_VERSION) {
+    if (data.command == Esp32Response.VERSION) {
+      final deviceProtocolVersion = data.parser.getString();
+
+      if (deviceProtocolVersion == BleBackgroundService.PROTOCOL_VERSION) {
         return;
       }
 
-      if (verMismatchDevices.contains(macAddress)) {
+      if (verMismatchDevices.contains(data.macAddress)) {
         return;
       }
-      verMismatchDevices.add(macAddress);
+      verMismatchDevices.add(data.macAddress);
 
       if (ignoreProtocolMismatch) {
         setState(() {});
@@ -104,7 +109,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       final vehicleName = vehicles
-          .firstWhere((element) => element.data.macAddress == macAddress)
+          .firstWhere((element) => element.data.macAddress == data.macAddress)
           .data
           .name;
 
@@ -113,7 +118,7 @@ class _HomePageState extends State<HomePage> {
           builder: (context) => AlertDialog(
                 title: const Text('Protocol Version Mismatch'),
                 content: Text(
-                    '$vehicleName is on protocol version $deviceProtocolVersion and the app is on ${BleBackgroundService.PROTOCLOL_VERSION}. Everything you need might still work, but if not please update your ESP32 to the newest version.'),
+                    '$vehicleName is on protocol version $deviceProtocolVersion and the app is on ${BleBackgroundService.PROTOCOL_VERSION}. Everything you need might still work, but if not please update your ESP32/app to the newest version.'),
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
@@ -127,20 +132,17 @@ class _HomePageState extends State<HomePage> {
                 ],
               ));
       setState(() {});
-    } else if (message.startsWith('NOT_AUTH') ||
-        message.startsWith('AUTH_FAIL') ||
-        message.startsWith('AUTH_COOLD')) {
-      if (notAuthenticatedDevices.contains(macAddress)) {
+    } else if (data.command == Esp32Response.INVALID_HMAC) {
+      if (notAuthenticatedDevices.contains(data.macAddress)) {
         return;
       }
-      notAuthenticatedDevices.add(macAddress);
+      notAuthenticatedDevices.add(data.macAddress);
       showDialog(
           context: context,
           builder: (context) => AlertDialog(
-                title: const Text('Not Authenticated'),
-                content: Text(message.startsWith('AUTH_COOLD')
-                    ? 'The device $macAddress you are trying to communicate with is not authenticated. Please make sure the pin is correct.'
-                    : 'Too many wrong authentication attempts on $macAddress. Please try again later.'),
+                title: const Text('Invalid HMAC'),
+                content: Text(
+                    'Invalid HMAC/rolling code for device ${data.macAddress}. Please remove the vehicle then hold down the button labeled BOOT on yor ESP32 for 5 sec and re-add it to the app.'),
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
@@ -148,20 +150,19 @@ class _HomePageState extends State<HomePage> {
                 ],
               ));
       setState(() {});
-    } else if (message.startsWith('AUTH_OK')) {
-      if (notAuthenticatedDevices.contains(macAddress)) {
-        notAuthenticatedDevices.remove(macAddress);
-        setState(() {});
-      }
-    } else if (message.startsWith('LOCKED')) {
+    } else if (data.command == Esp32Response.LOCKED ||
+        data.command == Esp32Response.PROXIMITY_LOCKED) {
       setState(() => vehicles
           .firstWhere((element) =>
-              element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
+              element.data.macAddress.toLowerCase() ==
+              data.macAddress.toLowerCase())
           .doorsLocked = true);
-    } else if (message.startsWith('UNLOCKED')) {
+    } else if (data.command == Esp32Response.UNLOCKED ||
+        data.command == Esp32Response.PROXIMITY_UNLOCKED) {
       setState(() => vehicles
           .firstWhere((element) =>
-              element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
+              element.data.macAddress.toLowerCase() ==
+              data.macAddress.toLowerCase())
           .doorsLocked = false);
     }
   }
@@ -169,9 +170,17 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    service.on('message_received').listen((event) {
+    service.on('command_received').listen((event) {
       if (event != null) {
-        processMessage(event['macAddress'], event['message']);
+        Esp32ResponseParser parser =
+            Esp32ResponseParser(List<int>.from(event['data']));
+        Esp32Response? command = Esp32Response.fromValue(parser.command);
+        if (command == null) {
+          return;
+        }
+        Esp32ResponseDate data = Esp32ResponseDate(
+            macAddress: event['macAddress'], command: command, parser: parser);
+        processMessage(data);
       }
     });
     service.on('connection_state_changed').listen((event) {
@@ -330,7 +339,7 @@ class _HomePageState extends State<HomePage> {
                                       if (notAuthenticatedDevices.contains(
                                           vehicle.device.macAddress.toString()))
                                         Tooltip(
-                                          message: 'Device not authenticated.',
+                                          message: 'Invalid HMAC',
                                           triggerMode: TooltipTriggerMode.tap,
                                           showDuration: Duration(seconds: 2),
                                           child: Icon(
@@ -388,11 +397,13 @@ class _HomePageState extends State<HomePage> {
                                                 vehicle.device.isConnected
                                                     ? () {
                                                         BleBackgroundService
-                                                            .sendMessage(
+                                                            .sendCommand(
                                                           vehicle.device,
                                                           vehicle.doorsLocked
-                                                              ? 'UNLOCK'
-                                                              : 'LOCK',
+                                                              ? ClientCommand
+                                                                  .UNLOCK_DOORS
+                                                              : ClientCommand
+                                                                  .LOCK_DOORS,
                                                         );
                                                       }
                                                     : null,
@@ -422,9 +433,10 @@ class _HomePageState extends State<HomePage> {
                                                       vehicle.device.isConnected
                                                           ? () {
                                                               BleBackgroundService
-                                                                  .sendMessage(
+                                                                  .sendCommand(
                                                                 vehicle.device,
-                                                                'OPEN_TRUNK',
+                                                                ClientCommand
+                                                                    .OPEN_TRUNK,
                                                               );
                                                             }
                                                           : null,
@@ -493,8 +505,19 @@ class _HomePageState extends State<HomePage> {
                                   print(
                                       'Deleting vehicle: ${vehicle.data.name}');
 
+                                  if (notAuthenticatedDevices
+                                      .contains(vehicle.device.macAddress)) {
+                                    notAuthenticatedDevices
+                                        .remove(vehicle.device.macAddress);
+                                  }
+
                                   VehicleStorage.removeVehicle(
                                       vehicle.data.macAddress);
+
+                                  prefs.remove(
+                                      'counter_${vehicle.device.macAddress}');
+                                  print(
+                                      'removing counter: counter_${vehicle.device.macAddress}');
 
                                   setState(() => vehicles.removeAt(index));
 
