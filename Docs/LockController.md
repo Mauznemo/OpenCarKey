@@ -210,7 +210,7 @@ Communication protocol between ESP and App.
 
 | Message                                                         | Response                                         |
 | ----------------------------------------------------------------| ------------------------------------------------ |
-| `0x00` (GET_VERSION)                                            | `VERSION + {Current protocol version}` (VERSION) |
+| `0x00` (GET_VERSION)                                            | `0x01 + {Current protocol version str}` (VERSION)|
 | Anything with no/invalid rolling code (HMAC)                    | `0x00` (INVALID_HMAC)                            |
 | `0x01` (GET_DATA)                                               | `0x02` (LOCKED) or `0x04` (UNLOCKED)             |
 | `0x02` (LOCK_DOORS)                                             | `0x02` (LOCKED)                                  |
