@@ -150,13 +150,15 @@ class _HomePageState extends State<HomePage> {
                 ],
               ));
       setState(() {});
-    } else if (data.command == Esp32Response.LOCKED) {
+    } else if (data.command == Esp32Response.LOCKED ||
+        data.command == Esp32Response.PROXIMITY_LOCKED) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() ==
               data.macAddress.toLowerCase())
           .doorsLocked = true);
-    } else if (data.command == Esp32Response.UNLOCKED) {
+    } else if (data.command == Esp32Response.UNLOCKED ||
+        data.command == Esp32Response.PROXIMITY_UNLOCKED) {
       setState(() => vehicles
           .firstWhere((element) =>
               element.data.macAddress.toLowerCase() ==

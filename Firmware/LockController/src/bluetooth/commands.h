@@ -23,6 +23,27 @@ enum class ClientCommand : uint8_t
     GET_RSSI           = 0x0B
 };
 
+const char* toString(ClientCommand cmd)
+{
+    switch (cmd)
+    {
+        case ClientCommand::GET_VERSION:  return "GET_VERSION";
+        case ClientCommand::GET_DATA:     return "GET_DATA";
+        case ClientCommand::LOCK_DOORS:   return "LOCK_DOORS";
+        case ClientCommand::UNLOCK_DOORS: return "UNLOCK_DOORS";
+        case ClientCommand::OPEN_TRUNK:   return "OPEN_TRUNK";
+        case ClientCommand::START_ENGINE: return "START_ENGINE";
+        case ClientCommand::STOP_ENGINE:  return "STOP_ENGINE";
+        case ClientCommand::PROXIMITY_KEY_ON:   return "PROXIMITY_KEY_ON";
+        case ClientCommand::PROXIMITY_KEY_OFF:  return "PROXIMITY_KEY_OFF";
+        case ClientCommand::PROXIMITY_COOLDOWN: return "PROXIMITY_COOLDOWN";
+        case ClientCommand::RSSI_TRIGGER:       return "RSSI_TRIGGER";
+        case ClientCommand::GET_RSSI:           return "GET_RSSI";
+        default: return "UNKNOWN_COMMAND";
+    }
+}
+
+
 /// @brief ESP32-to-Client Commands
 enum class Esp32Response : uint8_t
 {

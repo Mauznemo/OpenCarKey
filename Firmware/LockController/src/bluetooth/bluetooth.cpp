@@ -109,6 +109,7 @@ namespace
     void lock(bool proximity = false, bool ignoreCooldown = false)
     {
         if (proximity &&
+            previousProximityMillis != 0 &&
             proximityCooldown != 0 &&
             !ignoreCooldown &&
             ((millis() - previousProximityMillis) < (proximityCooldown * 60000)))
@@ -137,6 +138,7 @@ namespace
     {
 
         if (proximity &&
+            previousProximityMillis != 0 &&
             proximityCooldown != 0 &&
             !ignoreCooldown &&
             ((millis() - previousProximityMillis) < (proximityCooldown * 60000)))
@@ -380,8 +382,10 @@ class MyCallbacks : public BLECharacteristicCallbacks
         }
 
         if (DEBUG_MODE)
-            Serial.printf("Received command: 0x%02X with %d bytes of data\n",
-                          static_cast<uint8_t>(command), additionalLength);
+            Serial.printf("Received command: %s (0x%02X) with %d bytes of data\n",
+                          toString(command),
+                          static_cast<uint8_t>(command),
+                          additionalLength);
 
         switch (command)
         {
