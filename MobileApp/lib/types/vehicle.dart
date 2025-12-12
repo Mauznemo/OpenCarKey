@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'ble_device.dart';
+import 'features.dart';
 
 class Vehicle {
   BleDevice device;
@@ -44,8 +45,7 @@ class VehicleData {
   final String macAddress;
   final String password;
   final Uint8List sharedSecret;
-  final bool hasTrunkUnlock;
-  final bool hasEngineStart;
+  final Set<Feature> features;
   final bool noProximityKey;
   final String imagePath;
 
@@ -54,8 +54,7 @@ class VehicleData {
     required this.macAddress,
     required this.password,
     required this.sharedSecret,
-    required this.hasTrunkUnlock,
-    required this.hasEngineStart,
+    required this.features,
     this.noProximityKey = false,
     this.imagePath = '',
   });
@@ -67,8 +66,10 @@ class VehicleData {
       password: json['password'] ?? '',
       sharedSecret: Uint8List.fromList(
           (json['sharedSecret'] as List<dynamic>).cast<int>()),
-      hasTrunkUnlock: json['hasTrunkUnlock'],
-      hasEngineStart: json['hasEngineStart'],
+      features: (json['features'] as List<dynamic>?)
+              ?.map((e) => Feature.fromJson(e as String))
+              .toSet() ??
+          {},
       noProximityKey: json['noProximityKey'] ?? false,
       imagePath: json['imagePath'] ?? '',
     );
@@ -80,8 +81,7 @@ class VehicleData {
       'macAddress': macAddress,
       'password': password,
       'sharedSecret': sharedSecret.toList(),
-      'hasTrunkUnlock': hasTrunkUnlock,
-      'hasEngineStart': hasEngineStart,
+      'features': features.map((f) => f.toJson()).toList(),
       'noProximityKey': noProximityKey,
       'imagePath': imagePath,
     };

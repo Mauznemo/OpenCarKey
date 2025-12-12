@@ -30,6 +30,11 @@ class VehicleStorage {
     return decodedData.map((item) => VehicleData.fromJson(item)).toList();
   }
 
+  static Future<VehicleData> getVehicle(String macAddress) async {
+    final vehicles = await getVehicles();
+    return vehicles.firstWhere((vehicle) => vehicle.macAddress == macAddress);
+  }
+
   static Future<void> addVehicle(VehicleData vehicle) async {
     final vehicles = await getVehicles();
     vehicles.add(vehicle);

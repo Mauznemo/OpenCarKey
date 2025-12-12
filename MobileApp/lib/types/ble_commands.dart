@@ -40,7 +40,10 @@ enum ClientCommand {
   RSSI_TRIGGER(0x0A),
 
   /// Gets the current RSSI
-  GET_RSSI(0x0B);
+  GET_RSSI(0x0B),
+
+  /// Gets the features supported by the vehicle
+  GET_FEATURES(0x0C);
 
   const ClientCommand(this.value);
   final int value;
@@ -79,7 +82,12 @@ enum Esp32Response {
   /// Current RSSI
   ///
   /// Additional data: `float` RSSI
-  RSSI(0x06);
+  RSSI(0x06),
+
+  /// Features supported by the vehicle
+  ///
+  /// Additional data: `int` bitmask
+  FEATURES(0x07);
 
   const Esp32Response(this.value);
   final int value;

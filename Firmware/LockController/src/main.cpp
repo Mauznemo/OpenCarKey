@@ -1,6 +1,7 @@
 // Lock Controller code for ESP32 (Not tested yet!)
 #include <Arduino.h>
 #include "bluetooth/bluetooth.h"
+#include "config.h"
 
 // Pin definitions
 const int doorsRelayPin1 = 25;
@@ -15,7 +16,7 @@ void openTrunk()
   Serial.println("ut");
 }
 
-void unlock()
+void unlock(bool proximity)
 {
   digitalWrite(doorsRelayPin1, LOW);
   digitalWrite(doorsRelayPin2, HIGH);
@@ -25,7 +26,7 @@ void unlock()
   Serial.println("ud");
 }
 
-void lock()
+void lock(bool proximity)
 {
   digitalWrite(doorsRelayPin1, HIGH);
   digitalWrite(doorsRelayPin2, LOW);
@@ -42,11 +43,11 @@ void checkSerial()
     String data = Serial.readStringUntil('\n');
     if (data == "ld")
     {
-      lock();
+      lock(false);
     }
     else if (data == "ud")
     {
-      unlock();
+      unlock(false);
     }
     else if (data == "ut")
     {

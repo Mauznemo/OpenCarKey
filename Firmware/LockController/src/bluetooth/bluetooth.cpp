@@ -9,6 +9,7 @@
 #include <mbedtls/sha256.h>
 #include <mbedtls/md.h>
 #include <SPIFFS.h>
+#include <config.h>
 
 #define BLE_MTU_SIZE 64
 // BLE service and characteristic UUIDs
@@ -28,8 +29,8 @@ uint32_t counter = 0;
 
 void (*onConnected)() = nullptr;
 void (*onDisconnected)() = nullptr;
-void (*onLocked)() = nullptr;
-void (*onUnlocked)() = nullptr;
+void (*onLocked)(bool proximity) = nullptr;
+void (*onUnlocked)(bool proximity) = nullptr;
 void (*onTrunkOpened)() = nullptr;
 void (*onEngineStarted)() = nullptr;
 
@@ -124,7 +125,7 @@ namespace
         isLocked = true;
 
         if (onLocked)
-            onLocked();
+            onLocked(proximity);
 
         if (DEBUG_MODE)
             Serial.println("Locked (proximity:" + String(proximity) + ")");
@@ -153,7 +154,7 @@ namespace
         isLocked = false;
 
         if (onUnlocked)
-            onUnlocked();
+            onUnlocked(proximity);
 
         if (DEBUG_MODE)
             Serial.println("Unlocked (proximity:" + String(proximity) + ")");
@@ -446,6 +447,12 @@ class MyCallbacks : public BLECharacteristicCallbacks
             proximityCooldown = parseFloat(additionalDataPtr);
             if (DEBUG_MODE)
                 Serial.println("Proximity cooldown set: " + String(proximityCooldown));
+        }
+        break;
+        case ClientCommand::GET_FEATURES:
+        {
+            uint32_t featuresValue = static_cast<uint32_t>(SUPPORTED_FEATURES);
+            sendToClient(Esp32Response::FEATURES, reinterpret_cast<const uint8_t *>(&featuresValue), sizeof(featuresValue));
         }
         break;
 

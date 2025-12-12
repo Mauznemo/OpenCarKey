@@ -20,7 +20,8 @@ enum class ClientCommand : uint8_t
     PROXIMITY_KEY_OFF  = 0x08,
     PROXIMITY_COOLDOWN = 0x09,   // includes proximity cooldown float in min
     RSSI_TRIGGER       = 0x0A,   // includes Rssi float, Rssi dead zone float
-    GET_RSSI           = 0x0B
+    GET_RSSI           = 0x0B,
+    GET_FEATURES       = 0x0C
 };
 
 const char* toString(ClientCommand cmd)
@@ -39,6 +40,7 @@ const char* toString(ClientCommand cmd)
         case ClientCommand::PROXIMITY_COOLDOWN: return "PROXIMITY_COOLDOWN";
         case ClientCommand::RSSI_TRIGGER:       return "RSSI_TRIGGER";
         case ClientCommand::GET_RSSI:           return "GET_RSSI";
+        case ClientCommand::GET_FEATURES:       return "GET_FEATURES";
         default: return "UNKNOWN_COMMAND";
     }
 }
@@ -53,7 +55,8 @@ enum class Esp32Response : uint8_t
     PROXIMITY_LOCKED   = 0x03,
     UNLOCKED           = 0x04,
     PROXIMITY_UNLOCKED = 0x05,
-    RSSI               = 0x06   // includes Rssi float
+    RSSI               = 0x06,   // includes Rssi float
+    FEATURES           = 0x07,   // includes supported features
 };
 
 #endif

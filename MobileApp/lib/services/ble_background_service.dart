@@ -13,6 +13,7 @@ import 'package:vibration/vibration.dart';
 
 import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
+import '../types/features.dart';
 import '../types/vehicle.dart';
 import 'ble_service.dart';
 import '../utils/esp32_response_parser.dart';
@@ -180,7 +181,7 @@ class BleBackgroundService {
 
       debugPrint('Message received: ${espResponseData.command}');
 
-      _handleMessage(espResponseData);
+      _handleMessage(espResponseData, service);
 
       service.invoke(
         'command_received',
@@ -310,6 +311,9 @@ class BleBackgroundService {
           '${vehicle.data.name} connected.');
     }
 
+    await BleService.sendCommand(vehicle.device, ClientCommand.GET_FEATURES);
+    await Future.delayed(Duration(milliseconds: 200));
+
     await BleService.sendCommand(vehicle.device, ClientCommand.GET_DATA);
 
     if (_proximityKeyEnabled && !ignoreProximityKey) {
@@ -353,7 +357,8 @@ class BleBackgroundService {
     await BleDeviceStorage.removeDevice(vehicle.device.remoteId.str);
   }
 
-  static Future<void> _handleMessage(Esp32ResponseDate espResponseData) async {
+  static Future<void> _handleMessage(
+      Esp32ResponseDate espResponseData, ServiceInstance service) async {
     if (espResponseData.command == Esp32Response.VERSION) {
       await _prefs.reload();
       final ignoreProtocolMismatch =
@@ -390,9 +395,36 @@ class BleBackgroundService {
           }
         }
       }
-    }
+    } else if (espResponseData.command == Esp32Response.FEATURES) {
+      BackgroundVehicle? changedVehicle =
+          _getChangedVehicle(espResponseData.macAddress);
 
-    if (espResponseData.command == Esp32Response.PROXIMITY_LOCKED) {
+      if (changedVehicle != null) {
+        int? featuresBitmask = espResponseData.parser.getInt32();
+        if (featuresBitmask == null) {
+          return;
+        }
+        Set<Feature> features = featuresFromMask(featuresBitmask);
+        debugPrint('Received features: $features');
+
+        final data = changedVehicle.data;
+        await VehicleStorage.updateVehicle(VehicleData(
+            name: data.name,
+            macAddress: data.macAddress,
+            password: data.password,
+            sharedSecret: data.sharedSecret,
+            features: features));
+
+        service.invoke(
+          'reload_vehicle_data',
+          {
+            'macAddress': espResponseData.macAddress,
+          },
+        );
+
+        WidgetService.reloadVehicles();
+      }
+    } else if (espResponseData.command == Esp32Response.PROXIMITY_LOCKED) {
       BackgroundVehicle? changedVehicle =
           _getChangedVehicle(espResponseData.macAddress);
 

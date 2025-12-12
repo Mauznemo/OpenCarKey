@@ -29,7 +29,7 @@ Open `platformio.ini`. There you can set your password (`LOCK_PIN`) and BLE devi
 ### Locking
 To handle locking you need to assign a function to `onLocked` in `setup()` like (in `src/main.cpp`):
 ```cpp
-void lock()
+void lock(bool proximity)
 {
   //Your code for locking
 
@@ -49,7 +49,7 @@ void setup()
 ### Unlocking
 To handle unlocking you need to assign a function to `onUnlocked` in `setup()` like (in `src/main.cpp`):
 ```cpp
-void unlock()
+void unlock(bool proximity)
 {
   //Your code for unlocking
 
@@ -148,13 +148,13 @@ Called when the device is disconnected (for additional custom actions)
 
 ### onLocked
 ```cpp
-extern void (*onLocked)()
+extern void (*onLocked)(bool proximity)
 ```
 Called when the car gets locked
 
 ### onUnlocked
 ```cpp
-extern void (*onUnlocked)()
+extern void (*onUnlocked)(bool proximity)
 ```
 Called when the car gets unlocked
 
@@ -200,7 +200,7 @@ void bluetoothLoop()
 ```
 Loop need for bluetooth to work
 
-## Ble communication protocol (V2)
+## Ble communication protocol (V3)
 Communication protocol between ESP and App.
 ### Message structure (from client/app):
 32 byte HMAC + 1 byte command (+ optional additional data length + bytes)
@@ -223,6 +223,7 @@ Communication protocol between ESP and App.
 | `0x09 + {Proximity cooldown float in min}` (PROXIMITY_COOLDOWN) | None                                             |
 | `0x0A + {Rssi float, Rssi dead zone float}` (RSSI_TRIGGER)      | None                                             |
 | `0x0B` (GET_RSSI)                                               | `0x06 + {Rssi float}` (RSSI) can take 500ms      |
+| `0x0C` (GET_FEATURES)                                           | `0x07 + {int bitmask}` (FEATURES)                |
 
 `RSSI_TRIGGER` (0x0A) sets the **rssi strength** where proximity key will unlock and the **zone** (in rough meters) where nothing will happen. Eg. 5m: After the car was locked you have to get around 5m closer to it to unlock again. This is to prevent rapid locking and unlocking if you are at the exact trigger distance
 

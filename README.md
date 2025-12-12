@@ -41,7 +41,8 @@ Clone the repo and open the `MobileApp` directory in Android Studio or your pref
 ### ESP32 Lock Controller
 Clone the repo and open `Firmware/LockController/` with [PlatformIO](https://platformio.org/platformio-ide).
 Now you can add custom code for locking, unlocking etc. more info [here](Docs/LockController.md#custom-code-for-locking-unlocking-etc).
-Then you can open the `platformio.ini` file and change `LOCK_PIN` to any password you want.
+Then you can open the `config.h` file, there you can set the features your vehicle has (like trunk open, engine start etc), any features you enable there will be shown in the apps UI later.
+Also change the password and device name.
 Now you can connect you ESP32 and upload the code and then connect it with the app.
 
 [Lock Controller Docs](Docs/LockController.md)

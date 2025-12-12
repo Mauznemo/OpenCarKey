@@ -8,6 +8,7 @@ import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
 import '../services/ble_background_service.dart';
 import '../services/ble_service.dart';
+import '../types/features.dart';
 import '../utils/esp32_response_parser.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_commands.dart';
@@ -62,6 +63,18 @@ class _HomePageState extends State<HomePage> {
     getConnectedDevices();
 
     BleBackgroundService.tryConnectAll();
+  }
+
+  void reloadVehicleData(String macAddress) async {
+    await VehicleStorage.reloadPrefs();
+    final vehiclesData = await VehicleStorage.getVehicle(macAddress);
+
+    int index =
+        vehicles.indexWhere((element) => element.data.macAddress == macAddress);
+
+    setState(() {
+      vehicles[index].data = vehiclesData;
+    });
   }
 
   void getConnectedDevices() async {
@@ -186,6 +199,11 @@ class _HomePageState extends State<HomePage> {
     service.on('connection_state_changed').listen((event) {
       if (event != null) {
         getConnectedDevices();
+      }
+    });
+    service.on('reload_vehicle_data').listen((event) {
+      if (event != null) {
+        reloadVehicleData(event['macAddress']);
       }
     });
     getVehicles();
@@ -410,7 +428,8 @@ class _HomePageState extends State<HomePage> {
                                           ),
                                         ),
                                       ),
-                                      vehicle.data.hasTrunkUnlock
+                                      vehicle.data.features
+                                              .contains(Feature.trunkOpen)
                                           ? Padding(
                                               padding:
                                                   const EdgeInsets.symmetric(
@@ -444,7 +463,8 @@ class _HomePageState extends State<HomePage> {
                                               ),
                                             )
                                           : Container(),
-                                      vehicle.data.hasEngineStart
+                                      vehicle.data.features
+                                              .contains(Feature.engine)
                                           ? Padding(
                                               padding:
                                                   const EdgeInsets.symmetric(
