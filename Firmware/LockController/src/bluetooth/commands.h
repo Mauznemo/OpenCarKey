@@ -10,7 +10,7 @@
 enum class ClientCommand : uint8_t
 {
     GET_VERSION        = 0x00,
-    GET_DATA          = 0x01,
+    GET_DATA           = 0x01,
     LOCK_DOORS         = 0x02,
     UNLOCK_DOORS       = 0x03,
     OPEN_TRUNK         = 0x04,
@@ -27,7 +27,7 @@ enum class ClientCommand : uint8_t
 enum class Esp32Response : uint8_t
 {
     INVALID_HMAC       = 0x00,
-    VERSION            = 0x01,
+    VERSION            = 0x01,  // includes protocol version
     LOCKED             = 0x02,
     PROXIMITY_LOCKED   = 0x03,
     UNLOCKED           = 0x04,

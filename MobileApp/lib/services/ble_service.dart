@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../types/ble_commands.dart';
 import 'ble_background_service.dart';
+import '../utils/esp32_response_parser.dart';
 
 class BleService {
   static SharedPreferences? _prefs;
@@ -124,7 +125,7 @@ class BleService {
   /// - [additionalData] Additional data to send with the command (MAX 12 Bytes!).
   static Future<BluetoothCharacteristic?> sendCommand(
       BluetoothDevice device, ClientCommand command,
-      {String? additionalData}) async {
+      {Uint8List? additionalData}) async {
     try {
       if (!device.isConnected) {
         print('Device is not connected');
@@ -149,7 +150,6 @@ class BleService {
 
       if (characteristic.device.isDisconnected) {
         print('Device is not connected');
-
         return null;
       }
 
@@ -163,17 +163,15 @@ class BleService {
       payloadBytes.add(command.value);
 
       if (additionalData != null) {
-        final List<int> stringBytes =
-            utf8.encode(additionalData); // eg. "10.22,115.22"
+        int dataLength = additionalData.length;
 
-        if (stringBytes.length > 12) {
+        if (dataLength > 12) {
           print('Additional data is too long, truncating to 12 bytes.');
-          payloadBytes.add(12);
-          payloadBytes.addAll(stringBytes.sublist(0, 12));
-        } else {
-          payloadBytes.add(stringBytes.length);
-          payloadBytes.addAll(stringBytes);
+          dataLength = 12;
         }
+
+        payloadBytes.add(dataLength);
+        payloadBytes.addAll(additionalData.sublist(0, dataLength));
       }
 
       print(
@@ -184,14 +182,12 @@ class BleService {
       try {
         await characteristic.write(Uint8List.fromList(payloadBytes));
       } catch (e) {
-        print('Error writing to characteristic (revering counter): $e');
+        print('Error writing to characteristic (reverting counter): $e');
         var counter = prefs.getInt('counter_${device.remoteId.str}') ?? 0;
         counter--;
         prefs.setInt('counter_${device.remoteId.str}', counter);
         return null;
       }
-
-      //final response = utf8.decode(await characteristic.read());
 
       return characteristic;
     } on PlatformException catch (e) {
@@ -199,15 +195,62 @@ class BleService {
       return null;
     }
   }
+
+  /// Send command with a float value
+  static Future<BluetoothCharacteristic?> sendCommandWithFloat(
+      BluetoothDevice device, ClientCommand command, double value) {
+    final byteData = ByteData(4);
+    byteData.setFloat32(0, value, Endian.little);
+    return sendCommand(device, command,
+        additionalData: byteData.buffer.asUint8List());
+  }
+
+  /// Send command with an int32 value
+  static Future<BluetoothCharacteristic?> sendCommandWithInt32(
+      BluetoothDevice device, ClientCommand command, int value) {
+    final byteData = ByteData(4);
+    byteData.setInt32(0, value, Endian.little);
+    return sendCommand(device, command,
+        additionalData: byteData.buffer.asUint8List());
+  }
+
+  /// Send command with an int16 value
+  static Future<BluetoothCharacteristic?> sendCommandWithInt16(
+      BluetoothDevice device, ClientCommand command, int value) {
+    final byteData = ByteData(2);
+    byteData.setInt16(0, value, Endian.little);
+    return sendCommand(device, command,
+        additionalData: byteData.buffer.asUint8List());
+  }
+
+  /// Send command with a string
+  static Future<BluetoothCharacteristic?> sendCommandWithString(
+      BluetoothDevice device, ClientCommand command, String value) {
+    final stringBytes = utf8.encode(value);
+    return sendCommand(device, command,
+        additionalData: Uint8List.fromList(stringBytes));
+  }
+
+  /// Send command with multiple values packed together
+  /// Example: two floats (lat, lng) = 8 bytes total
+  static Future<BluetoothCharacteristic?> sendCommandWithFloats(
+      BluetoothDevice device, ClientCommand command, List<double> values) {
+    final byteData = ByteData(values.length * 4);
+    for (int i = 0; i < values.length; i++) {
+      byteData.setFloat32(i * 4, values[i], Endian.little);
+    }
+    return sendCommand(device, command,
+        additionalData: byteData.buffer.asUint8List());
+  }
 }
 
 class Esp32ResponseDate {
   final String macAddress;
   final Esp32Response command;
-  final String? additionalData;
+  final Esp32ResponseParser parser;
 
   Esp32ResponseDate(
-      {required this.macAddress, required this.command, this.additionalData});
+      {required this.macAddress, required this.command, required this.parser});
 }
 
 /*class MessageData {

@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../components/add_vehicle_bottom_sheet.dart';
 import '../components/edit_vehicle_bottom_sheet.dart';
 import '../services/ble_background_service.dart';
+import '../services/ble_service.dart';
+import '../utils/esp32_response_parser.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
@@ -86,26 +88,20 @@ class _HomePageState extends State<HomePage> {
     setState(() {});
   }
 
-  void processMessage(
-      String macAddress, Esp32Response? command, String? additionalData) {
-    if (command == null) {
-      print('Home Page: Received null command');
-      return;
-    }
+  void processMessage(Esp32ResponseDate data) {
+    print('Home Page: Received command: ${data.command}');
 
-    print('Home Page: Received command: $command');
+    if (data.command == Esp32Response.VERSION) {
+      final deviceProtocolVersion = data.parser.getString();
 
-    if (command == Esp32Response.VERSION) {
-      final deviceProtocolVersion = additionalData;
-
-      if (deviceProtocolVersion == BleBackgroundService.PROTOCLOL_VERSION) {
+      if (deviceProtocolVersion == BleBackgroundService.PROTOCOL_VERSION) {
         return;
       }
 
-      if (verMismatchDevices.contains(macAddress)) {
+      if (verMismatchDevices.contains(data.macAddress)) {
         return;
       }
-      verMismatchDevices.add(macAddress);
+      verMismatchDevices.add(data.macAddress);
 
       if (ignoreProtocolMismatch) {
         setState(() {});
@@ -113,7 +109,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       final vehicleName = vehicles
-          .firstWhere((element) => element.data.macAddress == macAddress)
+          .firstWhere((element) => element.data.macAddress == data.macAddress)
           .data
           .name;
 
@@ -122,7 +118,7 @@ class _HomePageState extends State<HomePage> {
           builder: (context) => AlertDialog(
                 title: const Text('Protocol Version Mismatch'),
                 content: Text(
-                    '$vehicleName is on protocol version $deviceProtocolVersion and the app is on ${BleBackgroundService.PROTOCLOL_VERSION}. Everything you need might still work, but if not please update your ESP32 to the newest version.'),
+                    '$vehicleName is on protocol version $deviceProtocolVersion and the app is on ${BleBackgroundService.PROTOCOL_VERSION}. Everything you need might still work, but if not please update your ESP32/app to the newest version.'),
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
@@ -136,17 +132,17 @@ class _HomePageState extends State<HomePage> {
                 ],
               ));
       setState(() {});
-    } else if (command == Esp32Response.INVALID_HMAC) {
-      if (notAuthenticatedDevices.contains(macAddress)) {
+    } else if (data.command == Esp32Response.INVALID_HMAC) {
+      if (notAuthenticatedDevices.contains(data.macAddress)) {
         return;
       }
-      notAuthenticatedDevices.add(macAddress);
+      notAuthenticatedDevices.add(data.macAddress);
       showDialog(
           context: context,
           builder: (context) => AlertDialog(
                 title: const Text('Invalid HMAC'),
                 content: Text(
-                    'Invalid HMAC/rolling code for device $macAddress. Please remove the vehicle then hold down the button labeled BOOT on yor ESP32 for 5 sec and re-add it to the app.'),
+                    'Invalid HMAC/rolling code for device ${data.macAddress}. Please remove the vehicle then hold down the button labeled BOOT on yor ESP32 for 5 sec and re-add it to the app.'),
                 actions: [
                   TextButton(
                       onPressed: Navigator.of(context).pop,
@@ -154,15 +150,17 @@ class _HomePageState extends State<HomePage> {
                 ],
               ));
       setState(() {});
-    } else if (command == Esp32Response.LOCKED) {
+    } else if (data.command == Esp32Response.LOCKED) {
       setState(() => vehicles
           .firstWhere((element) =>
-              element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
+              element.data.macAddress.toLowerCase() ==
+              data.macAddress.toLowerCase())
           .doorsLocked = true);
-    } else if (command == Esp32Response.UNLOCKED) {
+    } else if (data.command == Esp32Response.UNLOCKED) {
       setState(() => vehicles
           .firstWhere((element) =>
-              element.data.macAddress.toLowerCase() == macAddress.toLowerCase())
+              element.data.macAddress.toLowerCase() ==
+              data.macAddress.toLowerCase())
           .doorsLocked = false);
     }
   }
@@ -172,9 +170,15 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     service.on('command_received').listen((event) {
       if (event != null) {
-        String? additionalData = event['additionalData'];
-        processMessage(event['macAddress'],
-            Esp32Response.fromValue(event['command']), additionalData);
+        Esp32ResponseParser parser =
+            Esp32ResponseParser(List<int>.from(event['data']));
+        Esp32Response? command = Esp32Response.fromValue(parser.command);
+        if (command == null) {
+          return;
+        }
+        Esp32ResponseDate data = Esp32ResponseDate(
+            macAddress: event['macAddress'], command: command, parser: parser);
+        processMessage(data);
       }
     });
     service.on('connection_state_changed').listen((event) {
