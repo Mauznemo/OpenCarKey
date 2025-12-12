@@ -16,7 +16,6 @@
 &emsp;[onTrunkOpened](#ontrunkopened)<br>
 &emsp;[onEngineStarted](#onenginestarted)<br>
 &emsp;[deviceConnected](#deviceconnected)<br>
-&emsp;[isAuthenticated](#isauthenticated)<br>
 &emsp;[autoLocking](#autolocking)<br>
 &emsp;[isLocked](#islocked)<br>
 &emsp;[setupBluetooth](#setupbluetooth)<br>
@@ -177,12 +176,6 @@ extern bool deviceConnected
 ```
 Is the ESP is connected to the phone
 
-### isAuthenticated
-```cpp
-extern bool isAuthenticated
-```
-Is the currently connected phone authenticated
-
 ### autoLocking
 ```cpp
 extern bool autoLocking
@@ -210,10 +203,10 @@ Loop need for bluetooth to work
 ## Ble communication protocol (V2)
 Communication protocol between ESP and App.
 ### Message structure (from client/app):
-32 byte HMAC + 1 byte command (+ optional additional data sent as string)
+32 byte HMAC + 1 byte command (+ optional additional data length + bytes)
 
 ### Response structure (From ESP32)
-1 byte command  (+ optional additional data like sent as string)
+1 byte command (+ optional additional data length + bytes)
 
 | Message                                                         | Response                                         |
 | ----------------------------------------------------------------| ------------------------------------------------ |

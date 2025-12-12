@@ -35,7 +35,6 @@ void (*onEngineStarted)() = nullptr;
 
 bool isLocked = true;
 bool deviceConnected = false;
-bool isAuthenticated = false;
 bool autoLocking = false;
 
 bool oldDeviceConnected = false;
@@ -56,9 +55,6 @@ const long rssiInterval = 500;
 bool sendRssi = false;
 float proximityCooldown = 1; // in min
 unsigned long previousProximityMillis = 0;
-static int authAttempts = 0;
-static unsigned long lastAuthAttemptMillis = 0;
-const unsigned long authCooldownMillis = 10000;
 
 void sendToClient(Esp32Response responseCode, const uint8_t *data = nullptr, size_t dataLen = 0)
 {
@@ -200,7 +196,6 @@ class MyServerCallbacks : public BLEServerCallbacks
             Serial.println("Connected");
         memcpy(peerAddress, param->connect.remote_bda, sizeof(esp_bd_addr_t));
         deviceConnected = true;
-        isAuthenticated = false; // Reset authentication on new connection
 
         if (onConnected)
             onConnected();
@@ -211,7 +206,6 @@ class MyServerCallbacks : public BLEServerCallbacks
         if (DEBUG_MODE)
             Serial.println("Disconnected");
         deviceConnected = false;
-        isAuthenticated = false;      // Reset authentication on disconnect
         if (autoLocking && !isLocked) // Only true if disconnected before auto locking
         {
             // Possible edge case when proximity key is set to connection range and it connects, unlocks, but then looses connection
