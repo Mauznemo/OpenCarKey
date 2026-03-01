@@ -70,13 +70,16 @@ class WidgetService {
         orElse: () => vehicle.device,
       );
 
-      vehicles[i] = vehicle.copyWith(
-          device: connectedDevice.copyWith(
-              isConnected:
-                  connectedDeviceMacs.contains(vehicle.device.macAddress)));
+      final updatedVehicle = vehicle.copyWith(
+        device: connectedDevice.copyWith(
+          isConnected: connectedDeviceMacs.contains(vehicle.device.macAddress),
+        ),
+      );
 
-      if (vehicle.device.isConnected) {
-        connectedVehicles.add(vehicle);
+      vehicles[i] = updatedVehicle;
+
+      if (updatedVehicle.device.isConnected) {
+        connectedVehicles.add(updatedVehicle);
       }
     }
 
