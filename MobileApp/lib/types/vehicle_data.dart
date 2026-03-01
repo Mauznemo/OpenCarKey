@@ -19,6 +19,24 @@ class VehicleData {
     this.imagePath = '',
   });
 
+  VehicleData copyWith({
+    String? name,
+    String? macAddress,
+    Uint8List? sharedSecret,
+    Set<Feature>? features,
+    bool? noProximityKey,
+    String? imagePath,
+  }) {
+    return VehicleData(
+      name: name ?? this.name,
+      macAddress: macAddress ?? this.macAddress,
+      sharedSecret: sharedSecret ?? this.sharedSecret,
+      features: features ?? this.features,
+      noProximityKey: noProximityKey ?? this.noProximityKey,
+      imagePath: imagePath ?? this.imagePath,
+    );
+  }
+
   factory VehicleData.fromJson(Map<String, dynamic> json) {
     return VehicleData(
       name: json['name'],

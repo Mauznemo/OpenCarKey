@@ -424,11 +424,7 @@ class BleBackgroundService {
         debugPrint('Received features: $features');
 
         final data = changedVehicle.data;
-        await VehicleStorage.updateVehicle(VehicleData(
-            name: data.name,
-            macAddress: data.macAddress,
-            sharedSecret: data.sharedSecret,
-            features: features));
+        await VehicleStorage.updateVehicle(data.copyWith(features: features));
 
         service.invoke(
           'reload_vehicle_data',
