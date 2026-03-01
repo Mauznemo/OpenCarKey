@@ -2,12 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../services/ble_background_service.dart';
 import '../services/ble_service.dart';
 import '../services/vehicle_service.dart';
-import '../types/ble_device.dart';
+import '../models/ble_device.dart';
 import '../types/features.dart';
-import '../types/vehicle.dart';
+import '../models/vehicle.dart';
+import '../types/vehicle_data.dart';
 import '../utils/image_utils.dart';
 import 'custom_text_form_field.dart';
 import 'scan_dialog.dart';
@@ -256,11 +256,10 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   final sharedSecret = BleService.generateSharedSecret(
                       passwordController.text.trim());
 
-                  VehicleStorage.addVehicle(
+                  VehicleService.instance.addVehicle(
                     VehicleData(
                         name: vehicleNameController.text.trim(),
                         macAddress: connectedDevice.macAddress,
-                        password: passwordController.text.trim(),
                         sharedSecret: sharedSecret,
                         features: {
                           Feature.doorsLock,
@@ -270,10 +269,6 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                   vehicleNameController.clear();
                   passwordController.clear();
                   if (context.mounted) Navigator.pop(context);
-                  setState(() {});
-
-                  BleBackgroundService.reloadVehicles();
-                  BleBackgroundService.reloadHomescreenWidget();
                 },
                 icon: Icon(Icons.add),
                 label: Text('Connect now')),

@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../services/ble_background_service.dart';
 import '../services/ble_service.dart';
 import '../services/vehicle_service.dart';
-import '../types/vehicle.dart';
+import '../models/vehicle.dart';
+import '../types/vehicle_data.dart';
 import '../utils/image_utils.dart';
 import 'custom_text_form_field.dart';
 
@@ -35,7 +35,6 @@ class EditVehicleBottomSheet extends StatefulWidget {
 class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
   final formKey = GlobalKey<FormState>();
   final vehicleNameController = TextEditingController();
-  final passwordController = TextEditingController();
 
   File? _selectedImage;
   String imagePath = '';
@@ -54,7 +53,6 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
   void initState() {
     super.initState();
     vehicleNameController.text = widget.vehicle.data.name;
-    passwordController.text = widget.vehicle.data.password;
     noProximityKey = widget.vehicle.data.noProximityKey;
     imagePath = widget.vehicle.data.imagePath;
 
@@ -64,7 +62,6 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
   @override
   void dispose() {
     vehicleNameController.dispose();
-    passwordController.dispose();
     super.dispose();
   }
 
@@ -137,19 +134,6 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a vehicle name';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: CustomTextFormField(
-                controller: passwordController,
-                labelText: 'Password',
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a password';
                   }
                   return null;
                 },
@@ -285,25 +269,16 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
 
                   if (!isValid) return;
 
-                  final sharedSecret = BleService.generateSharedSecret(
-                      passwordController.text.trim());
-
-                  await VehicleStorage.updateVehicle(VehicleData(
+                  VehicleService.instance.updateVehicleData(VehicleData(
                       name: vehicleNameController.text,
                       macAddress: widget.vehicle.data.macAddress,
-                      password: passwordController.text.trim(),
-                      sharedSecret: sharedSecret,
+                      sharedSecret: widget.vehicle.data.sharedSecret,
                       features: widget.vehicle.data.features,
                       noProximityKey: noProximityKey,
                       imagePath: imagePath));
 
                   vehicleNameController.clear();
-                  passwordController.clear();
                   if (context.mounted) Navigator.pop(context);
-                  setState(() {});
-
-                  BleBackgroundService.reloadVehicles();
-                  BleBackgroundService.reloadHomescreenWidget();
                 },
                 icon: Icon(Icons.check),
                 label: Text('Done')),

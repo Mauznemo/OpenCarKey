@@ -11,10 +11,12 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
+import '../types/background_vehicle.dart';
 import '../types/ble_commands.dart';
-import '../types/ble_device.dart';
+import '../models/ble_device.dart';
 import '../types/features.dart';
-import '../types/vehicle.dart';
+import '../types/vehicle_data.dart';
+import 'ble_device_storage_service.dart';
 import 'ble_service.dart';
 import '../utils/esp32_response_parser.dart';
 import 'vehicle_service.dart';
@@ -122,7 +124,7 @@ class BleBackgroundService {
     _updateNotification(
         'Waiting for connection...', 'Go near a vehicle to connect.');
 
-    await BleDeviceStorage.clearBleDevices();
+    await BleDeviceStorageService.clearBleDevices();
 
     _prefs = await SharedPreferences.getInstance();
     _proximityKeyEnabled = _prefs.getBool('proximityKey') ?? false;
@@ -332,7 +334,7 @@ class BleBackgroundService {
           vehicle.device, ClientCommand.PROXIMITY_KEY_ON);
     }
 
-    await BleDeviceStorage.addDevice(vehicle.device.remoteId.str);
+    await BleDeviceStorageService.addDevice(vehicle.device.remoteId.str);
   }
 
   static Future<void> _handleDisconnected(OnConnectionStateChangedEvent event,
@@ -354,7 +356,7 @@ class BleBackgroundService {
       _vibrateLongTwice();
     }
 
-    await BleDeviceStorage.removeDevice(vehicle.device.remoteId.str);
+    await BleDeviceStorageService.removeDevice(vehicle.device.remoteId.str);
   }
 
   static Future<void> _handleMessage(
@@ -411,7 +413,6 @@ class BleBackgroundService {
         await VehicleStorage.updateVehicle(VehicleData(
             name: data.name,
             macAddress: data.macAddress,
-            password: data.password,
             sharedSecret: data.sharedSecret,
             features: features));
 
@@ -624,7 +625,7 @@ class BleBackgroundService {
   }
 
   static Future<List<BleDevice>> getConnectedDevices() async {
-    return await BleDeviceStorage.loadBleDevices();
+    return await BleDeviceStorageService.loadBleDevices();
   }
 
   static Future<BleDevice> connectToDevice(BluetoothDevice device) async {

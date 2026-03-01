@@ -4,9 +4,9 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:home_widget/home_widget.dart';
 
 import '../types/ble_commands.dart';
-import '../types/ble_device.dart';
+import '../models/ble_device.dart';
 import '../types/features.dart';
-import '../types/vehicle.dart';
+import '../models/vehicle.dart';
 import 'ble_background_service.dart';
 import 'vehicle_service.dart';
 
@@ -35,9 +35,12 @@ class WidgetService {
     if (macAddress ==
         connectedVehicles[selectedVehicleIndex].device.macAddress) {
       if (command == Esp32Response.LOCKED) {
-        connectedVehicles[selectedVehicleIndex].doorsLocked = true;
+        connectedVehicles[selectedVehicleIndex] =
+            connectedVehicles[selectedVehicleIndex].copyWith(doorsLocked: true);
       } else if (command == Esp32Response.UNLOCKED) {
-        connectedVehicles[selectedVehicleIndex].doorsLocked = false;
+        connectedVehicles[selectedVehicleIndex] =
+            connectedVehicles[selectedVehicleIndex]
+                .copyWith(doorsLocked: false);
       }
     }
 
@@ -59,15 +62,19 @@ class WidgetService {
     List<String> connectedDeviceMacs =
         connectedDevices.map((e) => e.macAddress).toList();
 
-    for (final vehicle in vehicles) {
+    for (int i = 0; i < vehicles.length; i++) {
+      final vehicle = vehicles[i];
+
       final connectedDevice = connectedDevices.firstWhere(
         (device) => device.macAddress == vehicle.device.macAddress,
         orElse: () => vehicle.device,
       );
 
-      vehicle.device = connectedDevice;
-      vehicle.device.isConnected =
-          connectedDeviceMacs.contains(vehicle.device.macAddress);
+      vehicles[i] = vehicle.copyWith(
+          device: connectedDevice.copyWith(
+              isConnected:
+                  connectedDeviceMacs.contains(vehicle.device.macAddress)));
+
       if (vehicle.device.isConnected) {
         connectedVehicles.add(vehicle);
       }

@@ -2,64 +2,33 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../components/custom_dropdown_button.dart';
+import '../providers/vehicles_provider.dart';
 import '../services/ble_background_service.dart';
 import '../services/ble_service.dart';
-import '../services/vehicle_service.dart';
+import '../services/settings_service.dart';
 import '../types/ble_commands.dart';
-import '../types/ble_device.dart';
-import '../types/vehicle.dart';
+import '../models/vehicle.dart';
 import '../utils/esp32_response_parser.dart';
 
-class RangeCalibrationPage extends StatefulWidget {
+class RangeCalibrationPage extends ConsumerStatefulWidget {
   const RangeCalibrationPage({super.key});
 
   @override
-  State<RangeCalibrationPage> createState() => _RangeCalibrationPageState();
+  ConsumerState<RangeCalibrationPage> createState() =>
+      _RangeCalibrationPageState();
 }
 
-class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
+class _RangeCalibrationPageState extends ConsumerState<RangeCalibrationPage> {
   final FlutterBackgroundService service = FlutterBackgroundService();
-  late SharedPreferences prefs;
-  List<Vehicle> connectedVehicles = [];
-  List<BleDevice> connectedDevices = [];
+
   Vehicle? selectedVehicle;
   late Timer timer;
   late StreamSubscription<Map<String, dynamic>?> sub;
 
   double triggerStrength = -200;
-
-  void loadPrefs() async {
-    prefs = await SharedPreferences.getInstance();
-
-    triggerStrength = prefs.getDouble('triggerStrength') ?? -200;
-
-    final vehiclesData = await VehicleStorage.getVehicles();
-
-    setState(() {
-      connectedVehicles = vehiclesData
-          .map((vehicle) => Vehicle(
-                device: BleDevice(
-                    macAddress: vehicle.macAddress,
-                    isConnected: connectedDevices.any(
-                        (element) => element.macAddress == vehicle.macAddress)),
-                data: vehicle,
-              ))
-          .toList()
-          .where((element) => element.device.isConnected)
-          .toList();
-    });
-  }
-
-  void getConnectedDevices() async {
-    if (!mounted) return;
-
-    setState(() {});
-
-    connectedDevices = await BleBackgroundService.getConnectedDevices();
-  }
 
   void readSignalStrength() async {
     if (selectedVehicle == null) return;
@@ -70,8 +39,7 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
   @override
   void initState() {
     super.initState();
-    getConnectedDevices();
-    loadPrefs();
+
     timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       readSignalStrength();
     });
@@ -105,6 +73,8 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final vehiclesState = ref.watch(vehiclesProvider);
+
     return Scaffold(
       appBar: AppBar(title: Text('Range Calibration')),
       body: Padding(
@@ -125,7 +95,8 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
                   selectedVehicle = newValue;
                 });
               },
-              items: connectedVehicles.map<DropdownMenuItem<Vehicle>>(
+              items: vehiclesState.connectedVehicles
+                  .map<DropdownMenuItem<Vehicle>>(
                 (Vehicle vehicle) {
                   return DropdownMenuItem<Vehicle>(
                     value: vehicle,
@@ -162,11 +133,8 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
                     ),
                     FilledButton(
                         onPressed: () async {
-                          await prefs.setDouble(
-                              'triggerStrength', triggerStrength);
-                          BleBackgroundService.setProximityStrength(
-                              triggerStrength);
-                          setState(() {});
+                          SettingsService.instance
+                              .setTriggerStrength(triggerStrength);
                           Navigator.pop(context);
                         },
                         child: Text('Set as trigger strength'))
