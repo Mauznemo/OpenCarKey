@@ -354,6 +354,9 @@ class BleBackgroundService {
         !ignoreProximityKey &&
         !vehicle.doorsLocked) {
       _vibrateLongTwice();
+    } else {
+      debugPrint(
+          'Not vibrating on disconnect, _proximityKeyEnabled: $_proximityKeyEnabled, _vibrate: $_vibrate, ignoreProximityKey: $ignoreProximityKey, vehicle.doorsLocked: ${vehicle.doorsLocked}');
     }
 
     await BleDeviceStorageService.removeDevice(vehicle.device.remoteId.str);
@@ -429,6 +432,8 @@ class BleBackgroundService {
       BackgroundVehicle? changedVehicle =
           _getChangedVehicle(espResponseData.macAddress);
 
+      changedVehicle?.doorsLocked = true;
+
       if (_vibrate) {
         _vibrateLongTwice();
       }
@@ -440,6 +445,8 @@ class BleBackgroundService {
       BackgroundVehicle? changedVehicle =
           _getChangedVehicle(espResponseData.macAddress);
 
+      changedVehicle?.doorsLocked = false;
+
       if (_vibrate) {
         _vibrateLongTwice();
       }
@@ -447,6 +454,16 @@ class BleBackgroundService {
       _updateNotification(
           'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Unlocked)',
           '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and was unlocked.');
+    } else if (espResponseData.command == Esp32Response.LOCKED) {
+      BackgroundVehicle? changedVehicle =
+          _getChangedVehicle(espResponseData.macAddress);
+
+      changedVehicle?.doorsLocked = true;
+    } else if (espResponseData.command == Esp32Response.UNLOCKED) {
+      BackgroundVehicle? changedVehicle =
+          _getChangedVehicle(espResponseData.macAddress);
+
+      changedVehicle?.doorsLocked = false;
     }
   }
 
