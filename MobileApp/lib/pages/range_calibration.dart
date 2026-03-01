@@ -6,10 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/custom_dropdown_button.dart';
 import '../services/ble_background_service.dart';
+import '../services/ble_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
 import '../types/vehicle.dart';
+import '../utils/esp32_response_parser.dart';
 
 class RangeCalibrationPage extends StatefulWidget {
   const RangeCalibrationPage({super.key});
@@ -74,11 +76,20 @@ class _RangeCalibrationPageState extends State<RangeCalibrationPage> {
       readSignalStrength();
     });
 
-    sub = service.on('message_received').listen((event) {
+    sub = service.on('command_received').listen((event) {
       if (event != null) {
-        if (event['message'].startsWith('RSSI:')) {
+        Esp32ResponseParser parser =
+            Esp32ResponseParser(List<int>.from(event['data']));
+        Esp32Response? command = Esp32Response.fromValue(parser.command);
+        if (command == null) {
+          return;
+        }
+        Esp32ResponseDate data = Esp32ResponseDate(
+            macAddress: event['macAddress'], command: command, parser: parser);
+
+        if (data.command == Esp32Response.RSSI) {
           setState(() {
-            triggerStrength = double.parse(event['message'].split(':')[1]);
+            triggerStrength = data.parser.getFloat() ?? -200;
           });
         }
       }

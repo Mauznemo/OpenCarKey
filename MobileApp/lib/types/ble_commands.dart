@@ -1,19 +1,49 @@
-// Protocol version: V2
+// ignore_for_file: constant_identifier_names
 
 /// Commands sent by the client/app to the ESP32
 enum ClientCommand {
+  /// Gets the protocol version of the ESP32
   GET_VERSION(0x00),
+
+  /// Triggers a doors locked or unlocked event depending on the state
   GET_DATA(0x01),
+
+  /// Locks the doors
   LOCK_DOORS(0x02),
+
+  /// Unlocks the doors
   UNLOCK_DOORS(0x03),
+
+  /// Opens the trunk
   OPEN_TRUNK(0x04),
+
+  /// Starts the engine
   START_ENGINE(0x05),
+
+  /// Stops the engine
   STOP_ENGINE(0x06),
+
+  /// Enables proximity key
   PROXIMITY_KEY_ON(0x07),
+
+  /// Disables proximity key
   PROXIMITY_KEY_OFF(0x08),
-  PROXIMITY_COOLDOWN(0x09), // includes proximity cooldown float in min
-  RSSI_TRIGGER(0x0A), // includes Rssi float, Rssi dead zone float
-  GET_RSSI(0x0B);
+
+  /// Sets the proximity cooldown
+  ///
+  /// Needs additional data: `float` proximity cooldown in minutes
+  PROXIMITY_COOLDOWN(0x09),
+
+  /// Sets the RSSI trigger values
+  ///
+  /// Needs additional data: `float` RSSI trigger, `float` RSSI dead zone
+  RSSI_TRIGGER(0x0A),
+
+  /// Gets the current RSSI
+  GET_RSSI(0x0B),
+
+  /// Gets the features supported by the vehicle
+  GET_FEATURES(0x0C);
 
   const ClientCommand(this.value);
   final int value;
@@ -31,13 +61,33 @@ enum ClientCommand {
 
 /// ESP32-to-Client Commands
 enum Esp32Response {
+  /// The HMAC was invalid
   INVALID_HMAC(0x00),
+
+  /// The protocol version
   VERSION(0x01),
+
+  /// Car was locked manually
   LOCKED(0x02),
+
+  /// Car was locked by proximity
   PROXIMITY_LOCKED(0x03),
+
+  /// Car was unlocked manually
   UNLOCKED(0x04),
+
+  /// Car was unlocked by proximity
   PROXIMITY_UNLOCKED(0x05),
-  RSSI(0x06); // includes Rssi float
+
+  /// Current RSSI
+  ///
+  /// Additional data: `float` RSSI
+  RSSI(0x06),
+
+  /// Features supported by the vehicle
+  ///
+  /// Additional data: `int` bitmask
+  FEATURES(0x07);
 
   const Esp32Response(this.value);
   final int value;

@@ -40,9 +40,6 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
   File? _selectedImage;
   String imagePath = '';
 
-  bool hasTrunkUnlock = false;
-  bool hasEngineStart = false;
-
   bool noProximityKey = false;
 
   bool isValid = true;
@@ -58,8 +55,6 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
     super.initState();
     vehicleNameController.text = widget.vehicle.data.name;
     passwordController.text = widget.vehicle.data.password;
-    hasTrunkUnlock = widget.vehicle.data.hasTrunkUnlock;
-    hasEngineStart = widget.vehicle.data.hasEngineStart;
     noProximityKey = widget.vehicle.data.noProximityKey;
     imagePath = widget.vehicle.data.imagePath;
 
@@ -264,48 +259,6 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Switch(
-                  value: hasTrunkUnlock,
-                  onChanged: (value) {
-                    setState(() {
-                      hasTrunkUnlock = value;
-                    });
-                  },
-                ),
-                SizedBox(width: 10),
-                SizedBox(
-                  width: 180,
-                  child: const Text(
-                    'Has Trunk Unlock',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Switch(
-                  value: hasEngineStart,
-                  onChanged: (value) {
-                    setState(() {
-                      hasEngineStart = value;
-                    });
-                  },
-                ),
-                SizedBox(width: 10),
-                SizedBox(
-                  width: 180,
-                  child: const Text(
-                    'Has Remote Engine Start',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Switch(
                   value: noProximityKey,
                   onChanged: (value) {
                     setState(() {
@@ -340,8 +293,7 @@ class _EditVehicleBottomSheetState extends State<EditVehicleBottomSheet> {
                       macAddress: widget.vehicle.data.macAddress,
                       password: passwordController.text.trim(),
                       sharedSecret: sharedSecret,
-                      hasTrunkUnlock: hasTrunkUnlock,
-                      hasEngineStart: hasEngineStart,
+                      features: widget.vehicle.data.features,
                       noProximityKey: noProximityKey,
                       imagePath: imagePath));
 

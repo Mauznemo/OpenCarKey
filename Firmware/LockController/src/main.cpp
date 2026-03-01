@@ -1,6 +1,7 @@
 // Lock Controller code for ESP32 (Not tested yet!)
 #include <Arduino.h>
 #include "bluetooth/bluetooth.h"
+#include "config.h"
 #include <ESP32Servo.h>
 
 // Pin definitions
@@ -8,7 +9,7 @@ const int lockServoPin = 13;
 
 Servo lockServo;
 
-void unlock()
+void unlock(bool proximity)
 {
   lockServo.attach(lockServoPin);
   lockServo.write(120);
@@ -17,7 +18,7 @@ void unlock()
   Serial.println("ud");
 }
 
-void lock()
+void lock(bool proximity)
 {
   lockServo.attach(lockServoPin);
   lockServo.write(80);
@@ -33,11 +34,11 @@ void checkSerial()
     String data = Serial.readStringUntil('\n');
     if (data == "ld")
     {
-      lock();
+      lock(false);
     }
     else if (data == "ud")
     {
-      unlock();
+      unlock(false);
     }
   }
 }
@@ -48,7 +49,7 @@ void setup()
   // Initialize pins
 
   Serial.begin(115200);
-  lock();
+  lock(false);
 
   setupBluetooth();
 

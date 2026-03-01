@@ -5,6 +5,7 @@ import 'package:home_widget/home_widget.dart';
 
 import '../types/ble_commands.dart';
 import '../types/ble_device.dart';
+import '../types/features.dart';
 import '../types/vehicle.dart';
 import 'ble_background_service.dart';
 import 'vehicle_service.dart';
@@ -26,7 +27,8 @@ class WidgetService {
 
   /// Updates the widget with the new state of the current connected vehicle. (ONLY call from Background service isolate)
   static void processMessage(String macAddress, Esp32Response command) {
-    if (connectedVehicles.isEmpty || connectedVehicles.length < selectedVehicleIndex) {
+    if (connectedVehicles.isEmpty ||
+        connectedVehicles.length < selectedVehicleIndex) {
       return;
     }
 
@@ -147,8 +149,10 @@ class WidgetService {
           json.encode({
             'name': currentVehicle.data.name,
             'macAddress': currentVehicle.device.macAddress,
-            'hasEngineStart': currentVehicle.data.hasEngineStart,
-            'hasTrunkUnlock': currentVehicle.data.hasTrunkUnlock,
+            'hasEngineStart':
+                currentVehicle.data.features.contains(Feature.engine),
+            'hasTrunkUnlock':
+                currentVehicle.data.features.contains(Feature.trunkOpen),
             'isLocked': currentVehicle.doorsLocked,
             'engineOn': currentVehicle.engineOn,
             'multipleConnectedDevices': connectedVehicles.length > 1

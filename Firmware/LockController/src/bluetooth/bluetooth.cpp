@@ -9,6 +9,7 @@
 #include <mbedtls/sha256.h>
 #include <mbedtls/md.h>
 #include <SPIFFS.h>
+#include <config.h>
 
 #define BLE_MTU_SIZE 64
 // BLE service and characteristic UUIDs
@@ -17,7 +18,7 @@
 
 #define RSSI_SAMPLES 5 // Number of samples for smoothing
 
-const std::string PROTOCOL_VERSION = "V2";
+const std::string PROTOCOL_VERSION = "V3";
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
@@ -28,14 +29,13 @@ uint32_t counter = 0;
 
 void (*onConnected)() = nullptr;
 void (*onDisconnected)() = nullptr;
-void (*onLocked)() = nullptr;
-void (*onUnlocked)() = nullptr;
+void (*onLocked)(bool proximity) = nullptr;
+void (*onUnlocked)(bool proximity) = nullptr;
 void (*onTrunkOpened)() = nullptr;
 void (*onEngineStarted)() = nullptr;
 
 bool isLocked = true;
 bool deviceConnected = false;
-bool isAuthenticated = false;
 bool autoLocking = false;
 
 bool oldDeviceConnected = false;
@@ -56,30 +56,16 @@ const long rssiInterval = 500;
 bool sendRssi = false;
 float proximityCooldown = 1; // in min
 unsigned long previousProximityMillis = 0;
-static int authAttempts = 0;
-static unsigned long lastAuthAttemptMillis = 0;
-const unsigned long authCooldownMillis = 10000;
 
-void sendToClinet(Esp32Response responseCode, const std::string &additionalDataString = "")
+void sendToClient(Esp32Response responseCode, const uint8_t *data = nullptr, size_t dataLen = 0)
 {
-
-    size_t stringLen = additionalDataString.length();
-
-    if (stringLen > 12)
+    if (dataLen > 12)
     {
-        Serial.println("Warning: additionalDataString truncated to 12 bytes.");
-        stringLen = 12;
+        Serial.println("Warning: data truncated to 12 bytes.");
+        dataLen = 12;
     }
 
-    // Calculate total buffer size: 1 byte for command + 1 byte for string length + string data
-    size_t totalBufferSize = 1;
-
-    if (stringLen > 0)
-    {
-        totalBufferSize += 1;         // Add 1 byte for string length
-        totalBufferSize += stringLen; // Add bytes for the string data
-    }
-
+    size_t totalBufferSize = 1 + (dataLen > 0 ? 1 + dataLen : 0);
     std::vector<uint8_t> responseBuffer(totalBufferSize);
 
     responseBuffer[0] = static_cast<uint8_t>(responseCode);
@@ -87,17 +73,32 @@ void sendToClinet(Esp32Response responseCode, const std::string &additionalDataS
     if (DEBUG_MODE)
         Serial.printf("Sent ESP32 Response: 0x%02X\n", static_cast<uint8_t>(responseCode));
 
-    if (stringLen > 0)
+    if (dataLen > 0)
     {
-        responseBuffer[1] = static_cast<uint8_t>(stringLen);                        // String length byte
-        memcpy(responseBuffer.data() + 2, additionalDataString.c_str(), stringLen); // Copy string data
+        responseBuffer[1] = static_cast<uint8_t>(dataLen);
+        memcpy(responseBuffer.data() + 2, data, dataLen);
 
         if (DEBUG_MODE)
-            Serial.printf(", String Length: %zu, Data: \"%s\"\n", stringLen, additionalDataString.substr(0, stringLen).c_str());
+            Serial.printf(", Data Length: %zu\n", dataLen);
     }
 
     pCharacteristic->setValue(responseBuffer.data(), totalBufferSize);
     pCharacteristic->notify();
+}
+
+void sendToClientFloat(Esp32Response responseCode, float value)
+{
+    sendToClient(responseCode, reinterpret_cast<const uint8_t *>(&value), sizeof(float));
+}
+
+void sendToClientInt32(Esp32Response responseCode, int32_t value)
+{
+    sendToClient(responseCode, reinterpret_cast<const uint8_t *>(&value), sizeof(int32_t));
+}
+
+void sendToClientString(Esp32Response responseCode, const std::string &str)
+{
+    sendToClient(responseCode, reinterpret_cast<const uint8_t *>(str.c_str()), str.length());
 }
 
 namespace
@@ -105,6 +106,7 @@ namespace
     void lock(bool proximity = false, bool ignoreCooldown = false)
     {
         if (proximity &&
+            previousProximityMillis != 0 &&
             proximityCooldown != 0 &&
             !ignoreCooldown &&
             ((millis() - previousProximityMillis) < (proximityCooldown * 60000)))
@@ -117,13 +119,13 @@ namespace
 
         if (deviceConnected)
         {
-            sendToClinet(proximity ? Esp32Response::PROXIMITY_LOCKED : Esp32Response::LOCKED);
+            sendToClient(proximity ? Esp32Response::PROXIMITY_LOCKED : Esp32Response::LOCKED);
         }
 
         isLocked = true;
 
         if (onLocked)
-            onLocked();
+            onLocked(proximity);
 
         if (DEBUG_MODE)
             Serial.println("Locked (proximity:" + String(proximity) + ")");
@@ -133,6 +135,7 @@ namespace
     {
 
         if (proximity &&
+            previousProximityMillis != 0 &&
             proximityCooldown != 0 &&
             !ignoreCooldown &&
             ((millis() - previousProximityMillis) < (proximityCooldown * 60000)))
@@ -145,13 +148,13 @@ namespace
 
         if (deviceConnected)
         {
-            sendToClinet(proximity ? Esp32Response::PROXIMITY_UNLOCKED : Esp32Response::UNLOCKED);
+            sendToClient(proximity ? Esp32Response::PROXIMITY_UNLOCKED : Esp32Response::UNLOCKED);
         }
 
         isLocked = false;
 
         if (onUnlocked)
-            onUnlocked();
+            onUnlocked(proximity);
 
         if (DEBUG_MODE)
             Serial.println("Unlocked (proximity:" + String(proximity) + ")");
@@ -194,7 +197,6 @@ class MyServerCallbacks : public BLEServerCallbacks
             Serial.println("Connected");
         memcpy(peerAddress, param->connect.remote_bda, sizeof(esp_bd_addr_t));
         deviceConnected = true;
-        isAuthenticated = false; // Reset authentication on new connection
 
         if (onConnected)
             onConnected();
@@ -205,7 +207,6 @@ class MyServerCallbacks : public BLEServerCallbacks
         if (DEBUG_MODE)
             Serial.println("Disconnected");
         deviceConnected = false;
-        isAuthenticated = false;      // Reset authentication on disconnect
         if (autoLocking && !isLocked) // Only true if disconnected before auto locking
         {
             // Possible edge case when proximity key is set to connection range and it connects, unlocks, but then looses connection
@@ -255,6 +256,58 @@ bool verifyHMAC(uint32_t counter, uint8_t command, const uint8_t *received_hmac)
     return memcmp(received_hmac, expected_hmac, 32) == 0;
 }
 
+float parseFloat(const uint8_t *data)
+{
+    if (data == nullptr)
+        return 0.0f;
+    float value;
+    memcpy(&value, data, sizeof(float));
+    return value;
+}
+
+int32_t parseInt32(const uint8_t *data)
+{
+    if (data == nullptr)
+        return 0;
+    int32_t value;
+    memcpy(&value, data, sizeof(int32_t));
+    return value;
+}
+
+int16_t parseInt16(const uint8_t *data)
+{
+    if (data == nullptr)
+        return 0;
+    int16_t value;
+    memcpy(&value, data, sizeof(int16_t));
+    return value;
+}
+
+uint8_t parseUint8(const uint8_t *data)
+{
+    if (data == nullptr)
+        return 0;
+    return data[0];
+}
+
+std::string parseString(const uint8_t *data, uint8_t length)
+{
+    if (data == nullptr || length == 0)
+        return "";
+    return std::string(reinterpret_cast<const char *>(data), length);
+}
+
+// Parse multiple floats (e.g., GPS coordinates)
+void parseFloats(const uint8_t *data, float *output, size_t count)
+{
+    if (data == nullptr || output == nullptr)
+        return;
+    for (size_t i = 0; i < count; i++)
+    {
+        memcpy(&output[i], data + (i * sizeof(float)), sizeof(float));
+    }
+}
+
 class MyCallbacks : public BLECharacteristicCallbacks
 {
     void onWrite(BLECharacteristic *pCharacteristic)
@@ -272,7 +325,7 @@ class MyCallbacks : public BLECharacteristicCallbacks
         if (length < 33)
         { // Minimum for HMAC + Command
             Serial.println("Received malformed client command: too short.");
-            sendToClinet(Esp32Response::INVALID_HMAC);
+            sendToClient(Esp32Response::INVALID_HMAC);
             return;
         }
 
@@ -283,9 +336,24 @@ class MyCallbacks : public BLECharacteristicCallbacks
         memcpy(commandByte, value.data() + 32, 1);
         ClientCommand command = static_cast<ClientCommand>(commandByte[0]);
 
-        uint8_t additionalLength = value.data()[33];
+        uint8_t additionalLength = 0;
+        const uint8_t *additionalDataPtr = nullptr;
 
-        std::string additionalDataString;
+        if (length > 33)
+        {
+            additionalLength = value.data()[33];
+
+            // Verify we have enough data
+            if (length >= 34 + additionalLength)
+            {
+                additionalDataPtr = reinterpret_cast<const uint8_t *>(value.data() + 34);
+            }
+            else
+            {
+                Serial.println("Malformed data: advertised length exceeds actual data.");
+                return;
+            }
+        }
 
         // Verify HMAC with a window of 10 counters to handle small desyncs
         bool valid = false;
@@ -304,30 +372,23 @@ class MyCallbacks : public BLECharacteristicCallbacks
         {
             if (DEBUG_MODE)
                 Serial.println("Received invalid HMAC. Tested counters: " + String(counter) + "-" + String(counter + 10));
-            sendToClinet(Esp32Response::INVALID_HMAC);
+            sendToClient(Esp32Response::INVALID_HMAC);
             return;
         }
 
-        if (additionalLength > 0)
-        {
-            std::vector<uint8_t> additionalData(additionalLength);
-            memcpy(additionalData.data(), value.data() + 34, additionalLength);
-            additionalDataString = std::string(additionalData.begin(), additionalData.end());
-
-            if (DEBUG_MODE)
-                Serial.printf("Received additional data: %s\n", additionalDataString.c_str());
-        }
-
         if (DEBUG_MODE)
-            Serial.printf("Received command: 0x%02X\n", static_cast<uint8_t>(command));
+            Serial.printf("Received command: %s (0x%02X) with %d bytes of data\n",
+                          toString(command),
+                          static_cast<uint8_t>(command),
+                          additionalLength);
 
         switch (command)
         {
         case ClientCommand::GET_VERSION:
-            sendToClinet(Esp32Response::VERSION, PROTOCOL_VERSION.c_str());
+            sendToClientString(Esp32Response::VERSION, PROTOCOL_VERSION.c_str());
             break;
         case ClientCommand::GET_DATA:
-            sendToClinet(isLocked ? Esp32Response::LOCKED : Esp32Response::UNLOCKED);
+            sendToClient(isLocked ? Esp32Response::LOCKED : Esp32Response::UNLOCKED);
             break;
         case ClientCommand::LOCK_DOORS:
             lock();
@@ -349,17 +410,18 @@ class MyCallbacks : public BLECharacteristicCallbacks
             break;
         case ClientCommand::RSSI_TRIGGER:
         {
-            if (additionalDataString.length() == 0)
+            if (additionalLength == 0)
             {
                 if (DEBUG_MODE)
                     Serial.println("No RSSI trigger data");
                 return;
             }
 
-            String additionalDataStringArd = String(additionalDataString.c_str()); // Use Arduino String to get util functions
-            int index = additionalDataStringArd.indexOf(',');
-            triggerRssiStrength = additionalDataStringArd.substring(0, index).toFloat();
-            rssiDeadZone = additionalDataStringArd.substring(index + 1).toInt();
+            float additionalDataFloats[2];
+            parseFloats(additionalDataPtr, additionalDataFloats, 2);
+
+            triggerRssiStrength = additionalDataFloats[0];
+            rssiDeadZone = additionalDataFloats[1];
 
             releaseRssiStrength = calculateReleaseRssi(triggerRssiStrength);
 
@@ -375,17 +437,22 @@ class MyCallbacks : public BLECharacteristicCallbacks
             break;
         case ClientCommand::PROXIMITY_COOLDOWN:
         {
-            if (additionalDataString.length() == 0)
+            if (additionalLength == 0)
             {
                 if (DEBUG_MODE)
                     Serial.println("No RSSI trigger data");
                 return;
             }
 
-            String additionalDataStringArd = String(additionalDataString.c_str()); // Use Arduino String to get util functions
-            proximityCooldown = additionalDataStringArd.toFloat();
+            proximityCooldown = parseFloat(additionalDataPtr);
             if (DEBUG_MODE)
                 Serial.println("Proximity cooldown set: " + String(proximityCooldown));
+        }
+        break;
+        case ClientCommand::GET_FEATURES:
+        {
+            uint32_t featuresValue = static_cast<uint32_t>(SUPPORTED_FEATURES);
+            sendToClient(Esp32Response::FEATURES, reinterpret_cast<const uint8_t *>(&featuresValue), sizeof(featuresValue));
         }
         break;
 
@@ -418,7 +485,7 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 
         if (sendRssi)
         {
-            sendToClinet(Esp32Response::RSSI, String(avgRSSI).c_str());
+            sendToClientFloat(Esp32Response::RSSI, avgRSSI);
             sendRssi = false;
         }
 
@@ -446,7 +513,7 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 
 void setupBluetooth()
 {
-    if (SPIFFS.begin())
+    if (SPIFFS.begin(true))
     {
         counter = readCounter();
     }

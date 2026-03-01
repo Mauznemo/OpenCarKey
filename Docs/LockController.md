@@ -16,7 +16,6 @@
 &emsp;[onTrunkOpened](#ontrunkopened)<br>
 &emsp;[onEngineStarted](#onenginestarted)<br>
 &emsp;[deviceConnected](#deviceconnected)<br>
-&emsp;[isAuthenticated](#isauthenticated)<br>
 &emsp;[autoLocking](#autolocking)<br>
 &emsp;[isLocked](#islocked)<br>
 &emsp;[setupBluetooth](#setupbluetooth)<br>
@@ -30,7 +29,7 @@ Open `platformio.ini`. There you can set your password (`LOCK_PIN`) and BLE devi
 ### Locking
 To handle locking you need to assign a function to `onLocked` in `setup()` like (in `src/main.cpp`):
 ```cpp
-void lock()
+void lock(bool proximity)
 {
   //Your code for locking
 
@@ -50,7 +49,7 @@ void setup()
 ### Unlocking
 To handle unlocking you need to assign a function to `onUnlocked` in `setup()` like (in `src/main.cpp`):
 ```cpp
-void unlock()
+void unlock(bool proximity)
 {
   //Your code for unlocking
 
@@ -149,13 +148,13 @@ Called when the device is disconnected (for additional custom actions)
 
 ### onLocked
 ```cpp
-extern void (*onLocked)()
+extern void (*onLocked)(bool proximity)
 ```
 Called when the car gets locked
 
 ### onUnlocked
 ```cpp
-extern void (*onUnlocked)()
+extern void (*onUnlocked)(bool proximity)
 ```
 Called when the car gets unlocked
 
@@ -176,12 +175,6 @@ Called when the engine gets started from the app
 extern bool deviceConnected
 ```
 Is the ESP is connected to the phone
-
-### isAuthenticated
-```cpp
-extern bool isAuthenticated
-```
-Is the currently connected phone authenticated
 
 ### autoLocking
 ```cpp
@@ -207,17 +200,17 @@ void bluetoothLoop()
 ```
 Loop need for bluetooth to work
 
-## Ble communication protocol (V2)
+## Ble communication protocol (V3)
 Communication protocol between ESP and App.
 ### Message structure (from client/app):
-32 byte HMAC + 1 byte command (+ optional additional data sent as string)
+32 byte HMAC + 1 byte command (+ optional additional data length + bytes)
 
 ### Response structure (From ESP32)
-1 byte command  (+ optional additional data like sent as string)
+1 byte command (+ optional additional data length + bytes)
 
 | Message                                                         | Response                                         |
 | ----------------------------------------------------------------| ------------------------------------------------ |
-| `0x00` (GET_VERSION)                                            | `VERSION + {Current protocol version}` (VERSION) |
+| `0x00` (GET_VERSION)                                            | `0x01 + {Current protocol version str}` (VERSION)|
 | Anything with no/invalid rolling code (HMAC)                    | `0x00` (INVALID_HMAC)                            |
 | `0x01` (GET_DATA)                                               | `0x02` (LOCKED) or `0x04` (UNLOCKED)             |
 | `0x02` (LOCK_DOORS)                                             | `0x02` (LOCKED)                                  |
@@ -230,6 +223,7 @@ Communication protocol between ESP and App.
 | `0x09 + {Proximity cooldown float in min}` (PROXIMITY_COOLDOWN) | None                                             |
 | `0x0A + {Rssi float, Rssi dead zone float}` (RSSI_TRIGGER)      | None                                             |
 | `0x0B` (GET_RSSI)                                               | `0x06 + {Rssi float}` (RSSI) can take 500ms      |
+| `0x0C` (GET_FEATURES)                                           | `0x07 + {int bitmask}` (FEATURES)                |
 
 `RSSI_TRIGGER` (0x0A) sets the **rssi strength** where proximity key will unlock and the **zone** (in rough meters) where nothing will happen. Eg. 5m: After the car was locked you have to get around 5m closer to it to unlock again. This is to prevent rapid locking and unlocking if you are at the exact trigger distance
 

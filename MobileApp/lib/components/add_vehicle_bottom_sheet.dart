@@ -6,6 +6,7 @@ import '../services/ble_background_service.dart';
 import '../services/ble_service.dart';
 import '../services/vehicle_service.dart';
 import '../types/ble_device.dart';
+import '../types/features.dart';
 import '../types/vehicle.dart';
 import '../utils/image_utils.dart';
 import 'custom_text_form_field.dart';
@@ -31,9 +32,6 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
   final formKey = GlobalKey<FormState>();
   final vehicleNameController = TextEditingController();
   final passwordController = TextEditingController();
-
-  bool hasTrunkUnlock = false;
-  bool hasEngineStart = false;
 
   File? _selectedImage;
   String imagePath = '';
@@ -234,44 +232,6 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                       ),
               ),
             ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Switch(
-                  value: hasTrunkUnlock,
-                  onChanged: (value) {
-                    setState(() => hasTrunkUnlock = value);
-                  },
-                ),
-                SizedBox(width: 10),
-                SizedBox(
-                  width: 180,
-                  child: const Text(
-                    'Has Trunk Unlock',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Switch(
-                  value: hasEngineStart,
-                  onChanged: (value) {
-                    setState(() => hasEngineStart = value);
-                  },
-                ),
-                SizedBox(width: 10),
-                SizedBox(
-                  width: 180,
-                  child: const Text(
-                    'Has Remote Engine Start',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(
               height: 20,
             ),
@@ -302,8 +262,9 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                         macAddress: connectedDevice.macAddress,
                         password: passwordController.text.trim(),
                         sharedSecret: sharedSecret,
-                        hasTrunkUnlock: hasTrunkUnlock,
-                        hasEngineStart: hasEngineStart,
+                        features: {
+                          Feature.doorsLock,
+                        },
                         imagePath: imagePath),
                   );
                   vehicleNameController.clear();
