@@ -30,7 +30,7 @@ class BleBackgroundService {
   static List<BackgroundVehicle> vehicles = [];
   static final ValueNotifier<Esp32ResponseDate?> _onMessageReceived =
       ValueNotifier<Esp32ResponseDate?>(null);
-  static final List<StreamSubscription?> _subscriptions = [];
+  static final Map<String, StreamSubscription> _subscriptions = {};
   static final FlutterBackgroundService _service = FlutterBackgroundService();
   static late SharedPreferences _prefs;
   static bool _proximityKeyEnabled = false;
@@ -86,14 +86,19 @@ class BleBackgroundService {
         foregroundServiceNotificationId: 888,
       ),
       iosConfiguration: IosConfiguration(
-        // auto start service
-        autoStart: true,
+        autoStart: false,
         // this will be executed when app is in foreground or background
         onForeground: onStart,
         // you have to enable background fetch capability on xcode project
         onBackground: backgroundServiceEnabled ? onIosBackground : null,
       ),
     );
+
+    if (!await service.isRunning()) {
+      await service.startService();
+    } else {
+      debugPrint('Service is already running, not starting again!');
+    }
   }
 
 // This is the background isolate function
@@ -277,7 +282,7 @@ class BleBackgroundService {
             Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
 
     await characteristic.setNotifyValue(true);
-    StreamSubscription? notificationSubscription =
+    final notificationSubscription =
         characteristic.onValueReceived.listen((value) {
       if (value.isEmpty) {
         debugPrint('Received empty value from characteristic.');
@@ -299,8 +304,7 @@ class BleBackgroundService {
           parser: parser);
     });
 
-    _subscriptions
-        .add(notificationSubscription); //TODO: remove if no longer needed
+    _subscriptions[event.device.remoteId.str] = notificationSubscription;
 
     await BleService.sendCommand(vehicle.device, ClientCommand.GET_VERSION);
     await Future.delayed(Duration(milliseconds: 200));
@@ -339,6 +343,13 @@ class BleBackgroundService {
 
   static Future<void> _handleDisconnected(OnConnectionStateChangedEvent event,
       BackgroundVehicle vehicle, bool ignoreProximityKey) async {
+    final subscription = _subscriptions[event.device.remoteId.str];
+
+    if (subscription != null) {
+      subscription.cancel();
+      _subscriptions.remove(event.device.remoteId.str);
+    }
+
     if (_proximityKeyEnabled && !ignoreProximityKey) {
       _updateNotification(
           'Disconnected from ${vehicle.data.name} (Proxy Locked)',
