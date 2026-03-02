@@ -160,17 +160,21 @@ class _SettingsState extends ConsumerState<SettingsPage> {
                     )),
               ]),
               SliderTheme(
-                  data: SliderTheme.of(context)
-                      .copyWith(year2023: false, padding: EdgeInsets.all(8)),
-                  child: Slider(
-                      value: settingsState.deadZone,
-                      min: 1,
-                      max: 15,
-                      divisions: 14,
-                      label: '~${settingsState.deadZone.toInt().toString()} m',
-                      onChanged: (value) {
-                        SettingsService.instance.setDeadZone(value);
-                      })),
+                data: SliderTheme.of(context)
+                    .copyWith(year2023: false, padding: EdgeInsets.all(8)),
+                child: Slider(
+                    value: settingsState.deadZone,
+                    min: 1,
+                    max: 15,
+                    divisions: 14,
+                    label: '~${settingsState.deadZone.toInt().toString()} m',
+                    onChanged: (value) {
+                      ref.read(settingsProvider.notifier).setDeadZone(value);
+                    },
+                    onChangeEnd: (value) {
+                      SettingsService.instance.setDeadZone(value);
+                    }),
+              ),
               const SizedBox(height: 20),
               Row(mainAxisAlignment: MainAxisAlignment.start, children: [
                 const Align(
@@ -204,6 +208,11 @@ class _SettingsState extends ConsumerState<SettingsPage> {
                       label: convertToMinSecString(
                           settingsState.proximityCooldown),
                       onChanged: (value) {
+                        ref
+                            .read(settingsProvider.notifier)
+                            .setProximityCooldown(value);
+                      },
+                      onChangeEnd: (value) {
                         SettingsService.instance.setProximityCooldown(value);
                       })),
               const SizedBox(height: 20),
