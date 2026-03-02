@@ -1,5 +1,6 @@
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'pages/home.dart';
 import 'pages/range_calibration.dart';
@@ -13,19 +14,21 @@ Future<void> main() async {
   await initializeApp();
 
   runApp(
-    DynamicColorBuilder(
-      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
-        ColorScheme lightColorScheme =
-            lightDynamic ?? ColorScheme.fromSeed(seedColor: Colors.blue);
-        ColorScheme darkColorScheme = darkDynamic ??
-            ColorScheme.fromSeed(
-                seedColor: Colors.blue, brightness: Brightness.dark);
+    ProviderScope(
+      child: DynamicColorBuilder(
+        builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+          ColorScheme lightColorScheme =
+              lightDynamic ?? ColorScheme.fromSeed(seedColor: Colors.blue);
+          ColorScheme darkColorScheme = darkDynamic ??
+              ColorScheme.fromSeed(
+                  seedColor: Colors.blue, brightness: Brightness.dark);
 
-        return MainApp(
-          lightColorScheme: lightColorScheme,
-          darkColorScheme: darkColorScheme,
-        );
-      },
+          return MainApp(
+            lightColorScheme: lightColorScheme,
+            darkColorScheme: darkColorScheme,
+          );
+        },
+      ),
     ),
   );
 }
@@ -35,10 +38,10 @@ class MainApp extends StatefulWidget {
   final ColorScheme darkColorScheme;
 
   const MainApp({
-    Key? key,
+    super.key,
     required this.lightColorScheme,
     required this.darkColorScheme,
-  }) : super(key: key);
+  });
 
   @override
   State<MainApp> createState() => _MainAppState();

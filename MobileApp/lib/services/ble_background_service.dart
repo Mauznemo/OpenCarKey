@@ -11,10 +11,12 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
+import '../types/background_vehicle.dart';
 import '../types/ble_commands.dart';
-import '../types/ble_device.dart';
+import '../models/ble_device.dart';
 import '../types/features.dart';
-import '../types/vehicle.dart';
+import '../types/vehicle_data.dart';
+import 'ble_device_storage_service.dart';
 import 'ble_service.dart';
 import '../utils/esp32_response_parser.dart';
 import 'vehicle_service.dart';
@@ -28,7 +30,7 @@ class BleBackgroundService {
   static List<BackgroundVehicle> vehicles = [];
   static final ValueNotifier<Esp32ResponseDate?> _onMessageReceived =
       ValueNotifier<Esp32ResponseDate?>(null);
-  static final List<StreamSubscription?> _subscriptions = [];
+  static final Map<String, StreamSubscription> _subscriptions = {};
   static final FlutterBackgroundService _service = FlutterBackgroundService();
   static late SharedPreferences _prefs;
   static bool _proximityKeyEnabled = false;
@@ -84,14 +86,19 @@ class BleBackgroundService {
         foregroundServiceNotificationId: 888,
       ),
       iosConfiguration: IosConfiguration(
-        // auto start service
-        autoStart: true,
+        autoStart: false,
         // this will be executed when app is in foreground or background
         onForeground: onStart,
         // you have to enable background fetch capability on xcode project
         onBackground: backgroundServiceEnabled ? onIosBackground : null,
       ),
     );
+
+    if (!await service.isRunning()) {
+      await service.startService();
+    } else {
+      debugPrint('Service is already running, not starting again!');
+    }
   }
 
 // This is the background isolate function
@@ -122,7 +129,7 @@ class BleBackgroundService {
     _updateNotification(
         'Waiting for connection...', 'Go near a vehicle to connect.');
 
-    await BleDeviceStorage.clearBleDevices();
+    await BleDeviceStorageService.clearBleDevices();
 
     _prefs = await SharedPreferences.getInstance();
     _proximityKeyEnabled = _prefs.getBool('proximityKey') ?? false;
@@ -275,7 +282,7 @@ class BleBackgroundService {
             Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
 
     await characteristic.setNotifyValue(true);
-    StreamSubscription? notificationSubscription =
+    final notificationSubscription =
         characteristic.onValueReceived.listen((value) {
       if (value.isEmpty) {
         debugPrint('Received empty value from characteristic.');
@@ -297,8 +304,7 @@ class BleBackgroundService {
           parser: parser);
     });
 
-    _subscriptions
-        .add(notificationSubscription); //TODO: remove if no longer needed
+    _subscriptions[event.device.remoteId.str] = notificationSubscription;
 
     await BleService.sendCommand(vehicle.device, ClientCommand.GET_VERSION);
     await Future.delayed(Duration(milliseconds: 200));
@@ -332,11 +338,18 @@ class BleBackgroundService {
           vehicle.device, ClientCommand.PROXIMITY_KEY_ON);
     }
 
-    await BleDeviceStorage.addDevice(vehicle.device.remoteId.str);
+    await BleDeviceStorageService.addDevice(vehicle.device.remoteId.str);
   }
 
   static Future<void> _handleDisconnected(OnConnectionStateChangedEvent event,
       BackgroundVehicle vehicle, bool ignoreProximityKey) async {
+    final subscription = _subscriptions[event.device.remoteId.str];
+
+    if (subscription != null) {
+      subscription.cancel();
+      _subscriptions.remove(event.device.remoteId.str);
+    }
+
     if (_proximityKeyEnabled && !ignoreProximityKey) {
       _updateNotification(
           'Disconnected from ${vehicle.data.name} (Proxy Locked)',
@@ -352,9 +365,12 @@ class BleBackgroundService {
         !ignoreProximityKey &&
         !vehicle.doorsLocked) {
       _vibrateLongTwice();
+    } else {
+      debugPrint(
+          'Not vibrating on disconnect, _proximityKeyEnabled: $_proximityKeyEnabled, _vibrate: $_vibrate, ignoreProximityKey: $ignoreProximityKey, vehicle.doorsLocked: ${vehicle.doorsLocked}');
     }
 
-    await BleDeviceStorage.removeDevice(vehicle.device.remoteId.str);
+    await BleDeviceStorageService.removeDevice(vehicle.device.remoteId.str);
   }
 
   static Future<void> _handleMessage(
@@ -408,12 +424,7 @@ class BleBackgroundService {
         debugPrint('Received features: $features');
 
         final data = changedVehicle.data;
-        await VehicleStorage.updateVehicle(VehicleData(
-            name: data.name,
-            macAddress: data.macAddress,
-            password: data.password,
-            sharedSecret: data.sharedSecret,
-            features: features));
+        await VehicleStorage.updateVehicle(data.copyWith(features: features));
 
         service.invoke(
           'reload_vehicle_data',
@@ -428,6 +439,8 @@ class BleBackgroundService {
       BackgroundVehicle? changedVehicle =
           _getChangedVehicle(espResponseData.macAddress);
 
+      changedVehicle?.doorsLocked = true;
+
       if (_vibrate) {
         _vibrateLongTwice();
       }
@@ -439,6 +452,8 @@ class BleBackgroundService {
       BackgroundVehicle? changedVehicle =
           _getChangedVehicle(espResponseData.macAddress);
 
+      changedVehicle?.doorsLocked = false;
+
       if (_vibrate) {
         _vibrateLongTwice();
       }
@@ -446,6 +461,16 @@ class BleBackgroundService {
       _updateNotification(
           'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Unlocked)',
           '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and was unlocked.');
+    } else if (espResponseData.command == Esp32Response.LOCKED) {
+      BackgroundVehicle? changedVehicle =
+          _getChangedVehicle(espResponseData.macAddress);
+
+      changedVehicle?.doorsLocked = true;
+    } else if (espResponseData.command == Esp32Response.UNLOCKED) {
+      BackgroundVehicle? changedVehicle =
+          _getChangedVehicle(espResponseData.macAddress);
+
+      changedVehicle?.doorsLocked = false;
     }
   }
 
@@ -624,7 +649,7 @@ class BleBackgroundService {
   }
 
   static Future<List<BleDevice>> getConnectedDevices() async {
-    return await BleDeviceStorage.loadBleDevices();
+    return await BleDeviceStorageService.loadBleDevices();
   }
 
   static Future<BleDevice> connectToDevice(BluetoothDevice device) async {

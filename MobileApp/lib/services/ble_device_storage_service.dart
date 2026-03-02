@@ -2,14 +2,9 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-class BleDevice {
-  final String macAddress;
-  bool isConnected;
+import '../models/ble_device.dart';
 
-  BleDevice({required this.macAddress, this.isConnected = false});
-}
-
-class BleDeviceStorage {
+class BleDeviceStorageService {
   static const String _deviceListKey = 'connected_devices';
 
   static Future<void> reloadPrefs() async {

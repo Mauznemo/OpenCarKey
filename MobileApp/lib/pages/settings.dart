@@ -1,42 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../services/ble_background_service.dart';
+import '../providers/settings_provider.dart';
+import '../services/settings_service.dart';
 
-class SettingsPage extends StatefulWidget {
+class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
   @override
-  State<SettingsPage> createState() => _SettingsState();
+  ConsumerState<SettingsPage> createState() => _SettingsState();
 }
 
-class _SettingsState extends State<SettingsPage> {
-  late SharedPreferences prefs;
-  bool proximityKey = false;
-  bool vibrate = true;
-  double triggerStrength = -200;
-  double deadZone = 4;
-  double proximityCooldown = 1; //in min
-  bool backgroundService = true;
-  bool ignoreProtocolMismatch = false;
-  bool showMacAddress = true;
-
-  void loadPrefs() async {
-    prefs = await SharedPreferences.getInstance();
-
-    proximityKey = prefs.getBool('proximityKey') ?? false;
-    triggerStrength = prefs.getDouble('triggerStrength') ?? -200;
-    vibrate = prefs.getBool('vibrate') ?? true;
-    deadZone = prefs.getDouble('deadZone') ?? 4;
-    proximityCooldown = prefs.getDouble('proximityCooldown') ?? 1;
-    backgroundService = prefs.getBool('backgroundService') ?? true;
-    ignoreProtocolMismatch = prefs.getBool('ignoreProtocolMismatch') ?? false;
-    showMacAddress = prefs.getBool('showMacAddress') ?? true;
-
-    setState(() {});
-  }
-
+class _SettingsState extends ConsumerState<SettingsPage> {
   String convertToMinSecString(double value) {
     int totalSeconds = (value * 60).toInt();
     int minutes = totalSeconds ~/ 60;
@@ -51,13 +27,8 @@ class _SettingsState extends State<SettingsPage> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    loadPrefs();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final settingsState = ref.watch(settingsProvider);
     return Scaffold(
         appBar: AppBar(
           title: const Text('Settings'),
@@ -77,14 +48,9 @@ class _SettingsState extends State<SettingsPage> {
               Row(
                 children: [
                   Switch(
-                    value: proximityKey,
+                    value: settingsState.proximityKey,
                     onChanged: (value) {
-                      prefs.setBool('proximityKey', value);
-                      BleBackgroundService.setProximityKey(value);
-
-                      setState(() {
-                        proximityKey = value;
-                      });
+                      SettingsService.instance.setProximityKey(value);
                     },
                   ),
                   SizedBox(width: 10),
@@ -98,14 +64,9 @@ class _SettingsState extends State<SettingsPage> {
               Row(
                 children: [
                   Switch(
-                    value: vibrate,
+                    value: settingsState.vibrate,
                     onChanged: (value) {
-                      prefs.setBool('vibrate', value);
-                      BleBackgroundService.setVibrate(value);
-
-                      setState(() {
-                        vibrate = value;
-                      });
+                      SettingsService.instance.setVibrate(value);
                     },
                   ),
                   SizedBox(width: 10),
@@ -131,7 +92,7 @@ class _SettingsState extends State<SettingsPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    triggerStrength == -200
+                    settingsState.triggerStrength == -200
                         ? Row(
                             children: [
                               const Icon(Icons.warning_amber_rounded),
@@ -145,7 +106,7 @@ class _SettingsState extends State<SettingsPage> {
                               const Icon(Icons.check_circle_outline),
                               const SizedBox(width: 10),
                               Text(
-                                  'Range is set to ${triggerStrength.toStringAsFixed(2)} dBm'),
+                                  'Range is set to ${settingsState.triggerStrength.toStringAsFixed(2)} dBm'),
                             ],
                           ),
                   ],
@@ -161,9 +122,6 @@ class _SettingsState extends State<SettingsPage> {
                         onPressed: () async {
                           await Navigator.pushNamed(
                               context, '/range_calibration');
-                          triggerStrength =
-                              prefs.getDouble('triggerStrength') ?? -200;
-                          setState(() {});
                         },
                         child: const Text('Set Range')),
                   ),
@@ -173,11 +131,7 @@ class _SettingsState extends State<SettingsPage> {
                     showDuration: const Duration(seconds: 5),
                     child: FilledButton(
                         onPressed: () {
-                          prefs.setDouble('triggerStrength', -200);
-                          BleBackgroundService.setProximityStrength(-200);
-                          triggerStrength = -200;
-
-                          setState(() {});
+                          SettingsService.instance.setTriggerStrength(-200);
                         },
                         child: const Text('Reset Range')),
                   )
@@ -206,22 +160,21 @@ class _SettingsState extends State<SettingsPage> {
                     )),
               ]),
               SliderTheme(
-                  data: SliderTheme.of(context)
-                      .copyWith(year2023: false, padding: EdgeInsets.all(8)),
-                  child: Slider(
-                      value: deadZone,
-                      min: 1,
-                      max: 15,
-                      divisions: 14,
-                      label: '~${deadZone.toInt().toString()} m',
-                      onChanged: (value) {
-                        prefs.setDouble('deadZone', value);
-                        BleBackgroundService.setDeadZone(value);
-
-                        setState(() {
-                          deadZone = value;
-                        });
-                      })),
+                data: SliderTheme.of(context)
+                    .copyWith(year2023: false, padding: EdgeInsets.all(8)),
+                child: Slider(
+                    value: settingsState.deadZone,
+                    min: 1,
+                    max: 15,
+                    divisions: 14,
+                    label: '~${settingsState.deadZone.toInt().toString()} m',
+                    onChanged: (value) {
+                      ref.read(settingsProvider.notifier).setDeadZone(value);
+                    },
+                    onChangeEnd: (value) {
+                      SettingsService.instance.setDeadZone(value);
+                    }),
+              ),
               const SizedBox(height: 20),
               Row(mainAxisAlignment: MainAxisAlignment.start, children: [
                 const Align(
@@ -248,18 +201,19 @@ class _SettingsState extends State<SettingsPage> {
                   data: SliderTheme.of(context)
                       .copyWith(year2023: false, padding: EdgeInsets.all(8)),
                   child: Slider(
-                      value: proximityCooldown,
+                      value: settingsState.proximityCooldown,
                       min: 0,
                       max: 5,
                       divisions: 10,
-                      label: convertToMinSecString(proximityCooldown),
+                      label: convertToMinSecString(
+                          settingsState.proximityCooldown),
                       onChanged: (value) {
-                        prefs.setDouble('proximityCooldown', value);
-                        BleBackgroundService.setProximityCooldown(value);
-
-                        setState(() {
-                          proximityCooldown = value;
-                        });
+                        ref
+                            .read(settingsProvider.notifier)
+                            .setProximityCooldown(value);
+                      },
+                      onChangeEnd: (value) {
+                        SettingsService.instance.setProximityCooldown(value);
                       })),
               const SizedBox(height: 20),
               Padding(
@@ -273,11 +227,10 @@ class _SettingsState extends State<SettingsPage> {
               Row(
                 children: [
                   Switch(
-                    value: backgroundService,
+                    value: settingsState.backgroundService,
                     onChanged: (value) {
-                      backgroundService = value;
                       if (value) {
-                        BleBackgroundService.enableBackgroundService();
+                        SettingsService.instance.setBackgroundService(true);
                       } else {
                         showDialog(
                             context: context,
@@ -289,23 +242,20 @@ class _SettingsState extends State<SettingsPage> {
                                     TextButton(
                                         onPressed: () {
                                           Navigator.of(context).pop();
-                                          BleBackgroundService
-                                              .disableBackgroundService();
+                                          SettingsService.instance
+                                              .setBackgroundService(false);
                                         },
                                         child: const Text('Disable')),
                                     TextButton(
                                         onPressed: () {
                                           Navigator.of(context).pop();
-                                          backgroundService = true;
-                                          setState(() {});
+                                          SettingsService.instance
+                                              .setBackgroundService(true);
                                         },
                                         child: const Text('Cancel'))
                                   ],
                                 ));
-                        setState(() {});
                       }
-                      prefs.setBool('backgroundService', backgroundService);
-                      setState(() {});
                     },
                   ),
                   SizedBox(width: 10),
@@ -319,11 +269,9 @@ class _SettingsState extends State<SettingsPage> {
               Row(
                 children: [
                   Switch(
-                    value: ignoreProtocolMismatch,
+                    value: settingsState.ignoreProtocolMismatch,
                     onChanged: (value) {
-                      ignoreProtocolMismatch = value;
-                      prefs.setBool('ignoreProtocolMismatch', value);
-                      setState(() {});
+                      SettingsService.instance.setIgnoreProtocolMismatch(value);
                     },
                   ),
                   SizedBox(width: 10),
@@ -337,11 +285,9 @@ class _SettingsState extends State<SettingsPage> {
               Row(
                 children: [
                   Switch(
-                    value: showMacAddress,
+                    value: settingsState.showMacAddress,
                     onChanged: (value) {
-                      showMacAddress = value;
-                      prefs.setBool('showMacAddress', value);
-                      setState(() {});
+                      SettingsService.instance.setShowMacAddress(value);
                     },
                   ),
                   SizedBox(width: 10),
