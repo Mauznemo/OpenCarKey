@@ -68,6 +68,7 @@ class VehicleTile extends ConsumerWidget {
                 HapticFeedback.lightImpact();
                 VehicleOptionsActionSheet.show(context, ref, vehicle, index);
               },
+              enableFeedback: false,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20.0)),
               tileColor: Theme.of(context).colorScheme.secondaryContainer,
