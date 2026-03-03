@@ -28,15 +28,17 @@ class VehicleTile extends ConsumerWidget {
         : ImageUtils.loadSavedImage(vehicle.data.imagePath);
 
     return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: ClipRRect(
-          borderRadius: BorderRadius.circular(20.0),
-          child: Stack(children: [
-            // Faded image background
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Material(
+        borderRadius: BorderRadius.circular(25),
+        color: Theme.of(context).colorScheme.secondaryContainer,
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
             if (imageFile != null)
               Positioned.fill(
                 child: ShaderMask(
-                  shaderCallback: (bounds) => LinearGradient(
+                  shaderCallback: (bounds) => const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [Colors.white, Colors.transparent],
@@ -44,187 +46,159 @@ class VehicleTile extends ConsumerWidget {
                   ).createShader(bounds),
                   blendMode: BlendMode.dstIn,
                   child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(
-                      sigmaX: 3.0,
-                      sigmaY: 3.0,
-                    ),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: FileImage(imageFile),
-                          fit: BoxFit.cover,
-                          colorFilter: ColorFilter.mode(
-                            Colors.black.withOpacity(0.4),
-                            BlendMode.darken,
-                          ),
-                        ),
-                      ),
+                    imageFilter: ImageFilter.blur(sigmaX: 3.0, sigmaY: 3.0),
+                    child: Image.file(
+                      imageFile,
+                      fit: BoxFit.cover,
+                      color: Colors.black.withOpacity(0.4),
+                      colorBlendMode: BlendMode.darken,
                     ),
                   ),
                 ),
               ),
-            ListTile(
+            InkWell(
+              borderRadius: BorderRadius.circular(25),
+              enableFeedback: false,
               onLongPress: () async {
                 HapticFeedback.lightImpact();
                 VehicleOptionsActionSheet.show(context, ref, vehicle, index);
               },
-              enableFeedback: false,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20.0)),
-              tileColor: Theme.of(context).colorScheme.secondaryContainer,
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!settingsState.showMacAddress) const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Icon(
-                        vehicle.device.isConnected
-                            ? Icons.bluetooth_audio
-                            : Icons.bluetooth_disabled_rounded,
-                        color: vehicle.device.isConnected
-                            ? Colors.green
-                            : Colors.red,
-                      ),
-                      SizedBox(width: 10),
-                      Text(
-                        vehicle.data.name,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      SizedBox(width: 10),
-                      if (vehicle.data.noProximityKey)
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!settingsState.showMacAddress)
+                      const SizedBox(height: 3),
+                    Row(
+                      children: [
                         Icon(
-                          Icons.location_disabled,
+                          vehicle.device.isConnected
+                              ? Icons.bluetooth_audio
+                              : Icons.bluetooth_disabled_rounded,
+                          color: vehicle.device.isConnected
+                              ? Colors.green
+                              : Colors.red,
                         ),
-                      SizedBox(width: 10),
-                      if (vehiclesState.unauthenticatedVehicles
-                          .contains(vehicle.device.macAddress.toString()))
-                        Tooltip(
-                          message: 'Invalid HMAC',
-                          triggerMode: TooltipTriggerMode.tap,
-                          showDuration: Duration(seconds: 2),
-                          child: Icon(
-                            Icons.pin,
-                            color: Colors.amber,
+                        const SizedBox(width: 10),
+                        Text(
+                          vehicle.data.name,
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        const SizedBox(width: 10),
+                        if (vehicle.data.noProximityKey)
+                          const Icon(Icons.location_disabled),
+                        const SizedBox(width: 10),
+                        if (vehiclesState.unauthenticatedVehicles
+                            .contains(vehicle.device.macAddress.toString()))
+                          Tooltip(
+                            message: 'Authentication failed',
+                            triggerMode: TooltipTriggerMode.tap,
+                            showDuration: const Duration(seconds: 2),
+                            child: const Icon(Icons.pin, color: Colors.amber),
                           ),
-                        ),
-                      if (vehiclesState.outdatedVehicles
-                          .contains(vehicle.device.macAddress.toString()))
-                        Tooltip(
-                          triggerMode: TooltipTriggerMode.tap,
-                          showDuration: Duration(seconds: 5),
-                          message:
-                              'ESP32 firmware version mismatch. Please update your ESP32.',
-                          child: Icon(
-                            Icons.update_disabled,
-                            color: Colors.amber,
+                        if (vehiclesState.outdatedVehicles
+                            .contains(vehicle.device.macAddress.toString()))
+                          Tooltip(
+                            triggerMode: TooltipTriggerMode.tap,
+                            showDuration: const Duration(seconds: 5),
+                            message:
+                                'ESP32 firmware version mismatch. Please update your ESP32.',
+                            child: const Icon(
+                              Icons.update_disabled,
+                              color: Colors.amber,
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  if (settingsState.showMacAddress)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),
-                      child: Text('Mac Address: ${vehicle.data.macAddress}',
-                          style: const TextStyle(fontSize: 12)),
+                      ],
                     ),
-                  if (!settingsState.showMacAddress) const SizedBox(height: 10),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+                    const SizedBox(height: 4),
+                    if (settingsState.showMacAddress)
                       Padding(
-                        padding: const EdgeInsets.only(right: 5),
-                        child: Ink(
-                          decoration: ShapeDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withAlpha(50),
-                            shape: CircleBorder(),
+                        padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),
+                        child: Text(
+                          'Mac Address: ${vehicle.data.macAddress}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    if (!settingsState.showMacAddress)
+                      const SizedBox(height: 10),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ActionButton(
+                          icon: Icon(
+                            vehicle.doorsLocked ? Icons.lock : Icons.lock_open,
+                            size: 30,
                           ),
-                          child: IconButton(
-                            icon: Icon(
-                                vehicle.doorsLocked
-                                    ? Icons.lock
-                                    : Icons.lock_open,
+                          onPressed: vehicle.device.isConnected
+                              ? () {
+                                  BleBackgroundService.sendCommand(
+                                    vehicle.device,
+                                    vehicle.doorsLocked
+                                        ? ClientCommand.UNLOCK_DOORS
+                                        : ClientCommand.LOCK_DOORS,
+                                  );
+                                }
+                              : null,
+                        ),
+                        if (vehicle.data.features.contains(Feature.trunkOpen))
+                          _ActionButton(
+                            icon: const Icon(Icons.directions_car_outlined,
                                 size: 30),
                             onPressed: vehicle.device.isConnected
                                 ? () {
                                     BleBackgroundService.sendCommand(
                                       vehicle.device,
-                                      vehicle.doorsLocked
-                                          ? ClientCommand.UNLOCK_DOORS
-                                          : ClientCommand.LOCK_DOORS,
+                                      ClientCommand.OPEN_TRUNK,
                                     );
                                   }
                                 : null,
                           ),
-                        ),
-                      ),
-                      vehicle.data.features.contains(Feature.trunkOpen)
-                          ? Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 5),
-                              child: Ink(
-                                decoration: ShapeDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withAlpha(50),
-                                  shape: CircleBorder(),
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(
-                                    Icons.directions_car_outlined,
-                                    size: 30,
-                                  ),
-                                  onPressed: vehicle.device.isConnected
-                                      ? () {
-                                          BleBackgroundService.sendCommand(
-                                            vehicle.device,
-                                            ClientCommand.OPEN_TRUNK,
-                                          );
-                                        }
-                                      : null,
-                                ),
-                              ),
-                            )
-                          : Container(),
-                      vehicle.data.features.contains(Feature.engine)
-                          ? Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 5),
-                              child: Ink(
-                                decoration: ShapeDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withAlpha(50),
-                                  shape: CircleBorder(),
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(
-                                    Icons.restart_alt,
-                                    size: 30,
-                                  ),
-                                  onPressed: vehicle.device.isConnected
-                                      ? () {
-                                          //TODO: Implement engine start
-                                        }
-                                      : null,
-                                ),
-                              ),
-                            )
-                          : Container(),
-                    ],
-                  ),
-                  if (!settingsState.showMacAddress) const SizedBox(height: 5),
-                ],
+                        if (vehicle.data.features.contains(Feature.engine))
+                          _ActionButton(
+                            icon: const Icon(Icons.restart_alt, size: 30),
+                            onPressed: vehicle.device.isConnected
+                                ? () {
+                                    // TODO: Implement engine start
+                                  }
+                                : null,
+                          ),
+                      ],
+                    ),
+                    if (!settingsState.showMacAddress)
+                      const SizedBox(height: 5),
+                  ],
+                ),
               ),
             ),
-          ])),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({required this.icon, required this.onPressed});
+
+  final Widget icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      child: Material(
+        color: Theme.of(context).colorScheme.primary.withAlpha(50),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: IconButton(
+          icon: icon,
+          onPressed: onPressed,
+        ),
+      ),
     );
   }
 }

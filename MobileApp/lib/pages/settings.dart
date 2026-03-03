@@ -1,313 +1,283 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
-import '../providers/settings_provider.dart';
-import '../services/settings_service.dart';
-import '../widgets/split_button_dialog.dart';
+import '../helpers/color_helper.dart';
+import 'settings/app_settings_page.dart';
+import 'settings/proximity_key_settings_page.dart';
+import 'settings/theme_settings_page.dart';
 
-class SettingsPage extends ConsumerStatefulWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
   @override
-  ConsumerState<SettingsPage> createState() => _SettingsState();
+  State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsState extends ConsumerState<SettingsPage> {
-  String convertToMinSecString(double value) {
-    int totalSeconds = (value * 60).toInt();
-    int minutes = totalSeconds ~/ 60;
-    int seconds = totalSeconds % 60;
-    if (minutes == 0) {
-      return '$seconds sec';
-    } else if (seconds == 0) {
-      return '$minutes min';
-    } else {
-      return '$minutes min $seconds sec';
-    }
+class _SettingsPageState extends State<SettingsPage> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    setState(() {
+      _version = packageInfo.version;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final settingsState = ref.watch(settingsProvider);
     return Scaffold(
-        appBar: AppBar(
-          title: const Text('Settings'),
+      appBar: AppBar(
+        title: Text(
+          'Settings',
         ),
-        body: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(children: [
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text('Proximity Key',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                        )),
-              ),
-              const Divider(height: 10, color: Colors.grey),
-              Row(
-                children: [
-                  Switch(
-                    value: settingsState.proximityKey,
-                    onChanged: (value) {
-                      SettingsService.instance.setProximityKey(value);
-                    },
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        scrolledUnderElevation: 0,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Proximity Key Tile
+                Card(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
                   ),
-                  SizedBox(width: 10),
-                  const Text(
-                    'Proximity Key Enabled',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Switch(
-                    value: settingsState.vibrate,
-                    onChanged: (value) {
-                      SettingsService.instance.setVibrate(value);
-                    },
-                  ),
-                  SizedBox(width: 10),
-                  const Text(
-                    'Vibrate on Proximity Key',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: EdgeInsets.only(left: 8.0),
-                  child: Text(
-                    'Trigger Range',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    settingsState.triggerStrength == -200
-                        ? Row(
-                            children: [
-                              const Icon(Icons.warning_amber_rounded),
-                              const SizedBox(width: 10),
-                              Text(
-                                  'Range is not set yet (using connect and disconnect)'),
-                            ],
-                          )
-                        : Row(
-                            children: [
-                              const Icon(Icons.check_circle_outline),
-                              const SizedBox(width: 10),
-                              Text(
-                                  'Range is set to ${settingsState.triggerStrength.toStringAsFixed(2)} dBm'),
-                            ],
-                          ),
-                  ],
-                ),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  Tooltip(
-                    message: 'Set a signal strength to lock and unlock at',
-                    showDuration: const Duration(seconds: 5),
-                    child: FilledButton(
-                        onPressed: () async {
-                          await Navigator.pushNamed(
-                              context, '/range_calibration');
-                        },
-                        child: const Text('Set Range')),
-                  ),
-                  Tooltip(
-                    message:
-                        'Use connect and disconnect instead of signal strength',
-                    showDuration: const Duration(seconds: 5),
-                    child: FilledButton(
-                        onPressed: () {
-                          SettingsService.instance.setTriggerStrength(-200);
-                        },
-                        child: const Text('Reset Range')),
-                  )
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(mainAxisAlignment: MainAxisAlignment.start, children: [
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: EdgeInsets.only(left: 8.0),
-                    child: Text(
-                      'Dead Zone',
-                      style: TextStyle(fontSize: 16),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
                     ),
-                  ),
-                ),
-                Tooltip(
-                    message:
-                        'Range in which nothing will happen. Eg. 5m: After the car was locked you have to get around 5m closer to it to unlock again. This is to prevent rapid locking and unlocking if you are at the exact trigger distance',
-                    triggerMode: TooltipTriggerMode.tap,
-                    showDuration: const Duration(minutes: 2),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Icon(Icons.info_outline),
-                    )),
-              ]),
-              SliderTheme(
-                data: SliderTheme.of(context)
-                    .copyWith(year2023: false, padding: EdgeInsets.all(8)),
-                child: Slider(
-                    value: settingsState.deadZone,
-                    min: 1,
-                    max: 15,
-                    divisions: 14,
-                    label: '~${settingsState.deadZone.toInt().toString()} m',
-                    onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setDeadZone(value);
-                    },
-                    onChangeEnd: (value) {
-                      SettingsService.instance.setDeadZone(value);
-                    }),
-              ),
-              const SizedBox(height: 20),
-              Row(mainAxisAlignment: MainAxisAlignment.start, children: [
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: EdgeInsets.only(left: 8.0),
-                    child: Text(
-                      'Proximity Cooldown',
-                      style: TextStyle(fontSize: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
                     ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withAlpha(100),
+                        borderRadius: BorderRadius.circular(50),
+                      ),
+                      child: Icon(
+                        Icons.key,
+                        color: ColorHelper.mixedPrimary(
+                          context,
+                          Colors.green,
+                          0.5,
+                        ),
+                        size: 28,
+                      ),
+                    ),
+                    title: Text(
+                      'Proximity Key',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Manage proximity key settings',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const ProximityKeySettingsPage(),
+                        ),
+                      );
+                    },
                   ),
                 ),
-                Tooltip(
-                    message:
-                        'Time to not unlock/lock again after locking/unlocking. To prevent rapid locking and unlocking while getting close or going away.',
-                    triggerMode: TooltipTriggerMode.tap,
-                    showDuration: const Duration(minutes: 1),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Icon(Icons.info_outline),
-                    )),
-              ]),
-              SliderTheme(
-                  data: SliderTheme.of(context)
-                      .copyWith(year2023: false, padding: EdgeInsets.all(8)),
-                  child: Slider(
-                      value: settingsState.proximityCooldown,
-                      min: 0,
-                      max: 5,
-                      divisions: 10,
-                      label: convertToMinSecString(
-                          settingsState.proximityCooldown),
-                      onChanged: (value) {
-                        ref
-                            .read(settingsProvider.notifier)
-                            .setProximityCooldown(value);
-                      },
-                      onChangeEnd: (value) {
-                        SettingsService.instance.setProximityCooldown(value);
-                      })),
-              const SizedBox(height: 20),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text('App',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                        )),
-              ),
-              const Divider(height: 10, color: Colors.grey),
-              Row(
-                children: [
-                  Switch(
-                    value: settingsState.backgroundService,
-                    onChanged: (value) {
-                      if (value) {
-                        SettingsService.instance.setBackgroundService(true);
-                      } else {
-                        showDialog(
-                            context: context,
-                            builder: (context) => SplitButtonDialog(
-                                  title: 'Are you sure?',
-                                  content: Text(
-                                      "If you disable the background service proximity key and the widget won't work and connection speed after opening the app might be slower."),
-                                  secondaryButton: SplitDialogButton(
-                                    label: 'Disable',
-                                    style: SplitDialogButtonStyle.red,
-                                    onPressed: () {
-                                      Navigator.of(context).pop();
-                                      SettingsService.instance
-                                          .setBackgroundService(false);
-                                    },
-                                  ),
-                                  primaryButton: SplitDialogButton(
-                                    label: 'Cancel',
-                                    style: SplitDialogButtonStyle.filled,
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(),
-                                  ),
-                                ));
-                      }
+
+                const SizedBox(height: 12),
+
+                // App Design Tile
+                Card(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.withAlpha(100),
+                        borderRadius: BorderRadius.circular(50),
+                      ),
+                      child: Icon(
+                        Icons.color_lens,
+                        color: ColorHelper.mixedPrimary(
+                          context,
+                          Colors.purple,
+                          0.5,
+                        ),
+                        size: 28,
+                      ),
+                    ),
+                    title: Text(
+                      'App Design',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Change appearance of the app',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ThemeSettingsPage(),
+                        ),
+                      );
                     },
                   ),
-                  SizedBox(width: 10),
-                  const Text(
-                    'Background Service Enabled',
-                    style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 12),
+
+                // App Tile
+                Card(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
                   ),
-                ],
-              ),
-              SizedBox(height: 20),
-              Row(
-                children: [
-                  Switch(
-                    value: settingsState.ignoreProtocolMismatch,
-                    onChanged: (value) {
-                      SettingsService.instance.setIgnoreProtocolMismatch(value);
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.lime.withAlpha(100),
+                        borderRadius: BorderRadius.circular(50),
+                      ),
+                      child: Icon(
+                        Icons.miscellaneous_services,
+                        color: ColorHelper.mixedPrimary(
+                          context,
+                          Colors.lime,
+                          0.5,
+                        ),
+                        size: 28,
+                      ),
+                    ),
+                    title: Text(
+                      'App',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Manage app related settings',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AppSettingsPage(),
+                        ),
+                      );
                     },
                   ),
-                  SizedBox(width: 10),
-                  const Text(
-                    'Ignore Protocol Version Mismatch',
-                    style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 12),
+
+                // Suppoert Tile
+                Card(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
                   ),
-                ],
-              ),
-              SizedBox(height: 20),
-              Row(
-                children: [
-                  Switch(
-                    value: settingsState.showMacAddress,
-                    onChanged: (value) {
-                      SettingsService.instance.setShowMacAddress(value);
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withAlpha(100),
+                        borderRadius: BorderRadius.circular(50),
+                      ),
+                      child: Icon(
+                        Icons.favorite,
+                        color: ColorHelper.mixedPrimary(
+                          context,
+                          Colors.red,
+                          0.5,
+                        ),
+                        size: 28,
+                      ),
+                    ),
+                    title: Text(
+                      'Support',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Support development',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    trailing: const Icon(Icons.open_in_new),
+                    onTap: () async {
+                      await launchUrl(Uri.parse(
+                          'https://smartify-os.com?support&code-url=https://github.com/Mauznemo/OpenCarKey'));
                     },
                   ),
-                  SizedBox(width: 10),
-                  const Text(
-                    'Show Mac Addresses',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ],
-              ),
-              SizedBox(height: 20),
-              FilledButton.icon(
-                icon: Icon(Icons.favorite),
-                label: Text('Support Project'),
-                onPressed: () async {
-                  await launchUrl(Uri.parse(
-                      'https://smartify-os.com?support&code-url=https://github.com/Mauznemo/OpenCarKey'));
-                },
-              ),
-            ]),
+                ),
+              ],
+            ),
           ),
-        ));
+          SafeArea(
+            child: Text(
+              'v$_version',
+              style: TextStyle(
+                fontSize: 14,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withAlpha(120),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

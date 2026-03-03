@@ -26,4 +26,13 @@ class ColorHelper {
       targetOklch.hue,
     ).toColor();
   }
+
+  static Color mixedPrimary(
+    BuildContext context,
+    Color color,
+    double strength,
+  ) {
+    return Color.lerp(Theme.of(context).colorScheme.primary, color, strength) ??
+        Theme.of(context).colorScheme.primary;
+  }
 }

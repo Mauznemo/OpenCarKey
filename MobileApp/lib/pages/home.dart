@@ -15,6 +15,7 @@ import '../types/ble_commands.dart';
 import '../models/vehicle.dart';
 import '../utils/image_utils.dart';
 import '../widgets/vehicle_tile.dart';
+import 'settings.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -54,7 +55,9 @@ class _HomePageState extends ConsumerState<HomePage> {
             IconButton(
                 icon: const Icon(Icons.settings),
                 onPressed: () {
-                  Navigator.pushNamed(context, '/settings');
+                  Navigator.push(context, MaterialPageRoute(builder: (context) {
+                    return const SettingsPage();
+                  }));
                 }),
           ],
         ),
