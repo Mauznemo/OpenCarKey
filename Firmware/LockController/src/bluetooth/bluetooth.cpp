@@ -511,6 +511,24 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
     }
 }
 
+std::string scrambleName(const std::string &name)
+{
+    const char *prefix = "OCK_";
+    const uint8_t key = 0x5A;
+    std::string input = std::string(prefix) + name;
+    std::string output = "";
+
+    for (size_t i = 0; i < input.length(); i++)
+    {
+        uint8_t x = (uint8_t)input[i] ^ key;
+        char buf[3];
+        snprintf(buf, sizeof(buf), "%02X", x);
+        output += buf;
+    }
+
+    return output;
+}
+
 void setupBluetooth()
 {
     if (SPIFFS.begin(true))
@@ -538,7 +556,7 @@ void setupBluetooth()
     }
 
     // Create the BLE Device
-    BLEDevice::init(DEVICE_NAME);
+    BLEDevice::init(scrambleName(DEVICE_NAME));
 
     // Create the BLE Server
     pServer = BLEDevice::createServer();

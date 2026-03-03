@@ -1,13 +1,14 @@
 plugins {
     id "com.android.application"
     id "kotlin-android"
+    id "org.jetbrains.kotlin.plugin.compose"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
 }
 
 android {
     namespace = "com.smartify_os.open_car_key_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     compileOptions {

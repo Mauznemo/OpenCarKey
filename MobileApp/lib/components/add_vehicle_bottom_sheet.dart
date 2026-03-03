@@ -1,15 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
-import '../services/ble_background_service.dart';
 import '../services/ble_service.dart';
 import '../services/vehicle_service.dart';
-import '../types/ble_device.dart';
+import '../models/ble_device.dart';
 import '../types/features.dart';
-import '../types/vehicle.dart';
-import '../utils/image_utils.dart';
-import 'custom_text_form_field.dart';
+import '../types/vehicle_data.dart';
+import '../widgets/vehicle_image_picker.dart';
 import 'scan_dialog.dart';
 
 class AddVehicleBottomSheet extends StatefulWidget {
@@ -17,11 +13,16 @@ class AddVehicleBottomSheet extends StatefulWidget {
 
   static Future<void> showBottomSheet(BuildContext context) async {
     await showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        builder: (BuildContext context) {
-          return AddVehicleBottomSheet();
-        });
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Theme.of(
+        context,
+      ).colorScheme.onSurface.withValues(alpha: 0.3),
+      builder: (BuildContext context) {
+        return AddVehicleBottomSheet();
+      },
+    );
   }
 
   @override
@@ -29,255 +30,215 @@ class AddVehicleBottomSheet extends StatefulWidget {
 }
 
 class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
-  final formKey = GlobalKey<FormState>();
-  final vehicleNameController = TextEditingController();
-  final passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _vehicleNameController = TextEditingController();
+  final _passwordController = TextEditingController();
 
-  File? _selectedImage;
-  String imagePath = '';
-
-  bool isValid = true;
+  String _imagePath = '';
 
   @override
   void dispose() {
-    vehicleNameController.dispose();
-    passwordController.dispose();
+    _vehicleNameController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  void _showImageSourceOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext mContext) {
-        final rootContext = context;
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: Icon(Icons.photo_library),
-                title: Text('Gallery'),
-                onTap: () async {
-                  Navigator.pop(mContext);
-                  await ImageUtils.deleteImage(imagePath);
-                  _selectedImage =
-                      await ImageUtils.pickImageFromGallery(rootContext);
-                  setState(() {});
-                  imagePath = _selectedImage?.path ?? '';
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.camera_alt),
-                title: Text('Camera'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await ImageUtils.deleteImage(imagePath);
-                  _selectedImage =
-                      await ImageUtils.pickImageFromCamera(rootContext);
-                  setState(() {});
-                  imagePath = _selectedImage?.path ?? '';
-                },
-              ),
-            ],
-          ),
-        );
-      },
+  Future<void> _connectAndAdd() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    await BleService.requestBluetoothPermissions();
+
+    if (!mounted) return;
+
+    final connectedDevice =
+        await showDialog(
+              context: context,
+              builder: (context) => const ScanDialog(),
+            )
+            as BleDevice?;
+
+    if (connectedDevice == null) return;
+
+    final sharedSecret = BleService.generateSharedSecret(
+      _passwordController.text.trim(),
     );
+
+    VehicleService.instance.addVehicle(
+      VehicleData(
+        name: _vehicleNameController.text.trim(),
+        macAddress: connectedDevice.macAddress,
+        sharedSecret: sharedSecret,
+        features: {Feature.doorsLock},
+        imagePath: _imagePath,
+      ),
+    );
+
+    _vehicleNameController.clear();
+    _passwordController.clear();
+
+    if (mounted) Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Form(
-        key: formKey,
-        onChanged: () {
-          if (!isValid) formKey.currentState?.validate();
-        },
+    return Padding(
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 32),
+      child: Container(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 200),
-              child: Divider(thickness: 4),
-            ),
-            const Text(
-              'Add Vehicle',
-              style: TextStyle(fontSize: 24),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: CustomTextFormField(
-                controller: vehicleNameController,
-                labelText: 'Vehicle Name',
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a vehicle name';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: CustomTextFormField(
-                controller: passwordController,
-                labelText: 'Password',
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a password';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
+            Center(
               child: Container(
-                width: double.infinity,
-                height: 100,
+                width: 40,
+                height: 4,
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(50),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                child: _selectedImage != null
-                    ? Stack(
+              ),
+            ),
+            SizedBox(height: 20),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Add New Vehicle',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 24),
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(50),
-                            child: Image.file(
-                              _selectedImage!,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                            ),
+                          Text(
+                            'Vehicle Name',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 10),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withAlpha(150),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: IconButton(
-                                  onPressed: () => _showImageSourceOptions(),
-                                  icon: Icon(Icons.edit,
-                                      color: Colors.white, size: 25),
-                                  padding: EdgeInsets.all(4),
-                                  constraints: BoxConstraints(
-                                      minWidth: 32, minHeight: 32),
-                                ),
+                          SizedBox(height: 8),
+                          TextFormField(
+                            controller: _vehicleNameController,
+                            decoration: InputDecoration(
+                              hintText: 'Enter vehicle name',
+                              contentPadding: EdgeInsets.symmetric(
+                                vertical: 16,
+                                horizontal: 20,
                               ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(50),
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withAlpha(66),
                             ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Please enter a vehicle name';
+                              }
+                              return null;
+                            },
                           ),
-                          Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withAlpha(150),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: IconButton(
-                                  onPressed: () async {
-                                    await ImageUtils.deleteImage(imagePath);
-                                    imagePath = '';
-                                    _selectedImage = null;
-                                    setState(() {});
-                                  },
-                                  icon: Icon(Icons.delete,
-                                      color: Colors.white, size: 25),
-                                  padding: EdgeInsets.all(4),
-                                  constraints: BoxConstraints(
-                                      minWidth: 32, minHeight: 32),
-                                ),
+
+                          SizedBox(height: 16),
+
+                          Text(
+                            'Password',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          SizedBox(height: 8),
+                          TextFormField(
+                            controller: _passwordController,
+                            decoration: InputDecoration(
+                              hintText: 'Enter password',
+                              contentPadding: EdgeInsets.symmetric(
+                                vertical: 16,
+                                horizontal: 20,
                               ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(50),
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withAlpha(66),
                             ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Please enter a password';
+                              }
+                              return null;
+                            },
+                          ),
+
+                          SizedBox(height: 16),
+
+                          Text(
+                            'Background Image',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          SizedBox(height: 8),
+
+                          VehicleImagePicker(
+                            imagePath: _imagePath,
+                            onImageSelected: (imagePath) {
+                              setState(() {
+                                _imagePath = imagePath;
+                              });
+                            },
                           ),
                         ],
-                      )
-                    : InkWell(
-                        onTap: _showImageSourceOptions,
-                        borderRadius: BorderRadius.circular(50),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.add_a_photo,
-                                size: 30,
-                                color: Colors.grey,
+                      ),
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _connectAndAdd,
+                            style: FilledButton.styleFrom(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(50),
                               ),
-                              SizedBox(height: 16),
-                              Text(
-                                'No background image selected',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
+                            ),
+                            icon: Icon(Icons.add),
+                            label: Text('Connect and save'),
                           ),
                         ),
-                      ),
+                      ],
+                    ),
+                    const SizedBox(height: 30),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(
-              height: 20,
-            ),
-            FilledButton.icon(
-                onPressed: () async {
-                  isValid = formKey.currentState!.validate() == true;
-
-                  if (!isValid) return;
-
-                  await BleService.requestBluetoothPermissions();
-
-                  final connectedDevice = await showDialog(
-                    context: context,
-                    builder: (context) => const ScanDialog(),
-                  ) as BleDevice?;
-
-                  print(connectedDevice);
-
-                  if (connectedDevice == null)
-                    return print('No device connected');
-
-                  final sharedSecret = BleService.generateSharedSecret(
-                      passwordController.text.trim());
-
-                  VehicleStorage.addVehicle(
-                    VehicleData(
-                        name: vehicleNameController.text.trim(),
-                        macAddress: connectedDevice.macAddress,
-                        password: passwordController.text.trim(),
-                        sharedSecret: sharedSecret,
-                        features: {
-                          Feature.doorsLock,
-                        },
-                        imagePath: imagePath),
-                  );
-                  vehicleNameController.clear();
-                  passwordController.clear();
-                  if (context.mounted) Navigator.pop(context);
-                  setState(() {});
-
-                  BleBackgroundService.reloadVehicles();
-                  BleBackgroundService.reloadHomescreenWidget();
-                },
-                icon: Icon(Icons.add),
-                label: Text('Connect now')),
-            const SizedBox(height: 30),
           ],
         ),
       ),

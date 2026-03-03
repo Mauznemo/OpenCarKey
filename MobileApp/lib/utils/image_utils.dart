@@ -43,11 +43,11 @@ class ImageUtils {
     }
   }
 
-  static Future<File?> loadSavedImage(String imagePath) async {
+  static File? loadSavedImage(String imagePath) {
     try {
       if (imagePath.isNotEmpty) {
         final file = File(imagePath);
-        if (await file.exists()) {
+        if (file.existsSync()) {
           return file;
         }
       }

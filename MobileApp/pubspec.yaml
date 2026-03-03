@@ -6,7 +6,7 @@ publish_to: 'none'
 version: 0.0.1+1
 
 environment:
-  sdk: ^3.6.1
+  sdk: ^3.8.1
 
 dependencies:
   flutter:
@@ -27,12 +27,20 @@ dependencies:
   home_widget: ^0.8.0
   url_launcher: ^6.3.2
   crypto: ^3.0.6
+  flutter_riverpod: ^3.2.1
+  riverpod_annotation: ^4.0.2
+  freezed_annotation: ^3.1.0
+  package_info_plus: ^9.0.0
+  oklch: ^1.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.3
+  build_runner: any
+  riverpod_generator: ^4.0.3
+  freezed: ^3.2.5
 
 flutter:
   uses-material-design: true
