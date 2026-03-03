@@ -14,6 +14,28 @@ class ScanDialog extends StatefulWidget {
 class _ScanDialogState extends State<ScanDialog> {
   final List<Map<String, dynamic>> devices = [];
 
+  ({bool isOckDevice, String decodedName}) _decodeBluetoothName(
+      String encoded) {
+    const int key = 0x5A;
+
+    // Convert HEX back to bytes
+    List<int> bytes = [];
+
+    for (int i = 0; i < encoded.length; i += 2) {
+      String hexByte = encoded.substring(i, i + 2);
+      int value = int.parse(hexByte, radix: 16);
+      bytes.add(value ^ key);
+    }
+
+    String decoded = String.fromCharCodes(bytes);
+
+    if (decoded.startsWith("OCK_")) {
+      return (isOckDevice: true, decodedName: decoded.substring(4));
+    }
+
+    return (isOckDevice: false, decodedName: '');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -22,13 +44,15 @@ class _ScanDialogState extends State<ScanDialog> {
       (results) {
         if (results.isNotEmpty) {
           ScanResult r = results.last;
-          print(
-              '${r.device.remoteId}: "${r.advertisementData.advName}" found!');
+          final nameResult = _decodeBluetoothName(r.advertisementData.advName);
+          if (!nameResult.isOckDevice) {
+            return;
+          }
+          debugPrint(
+              '${r.device.remoteId}: "${nameResult.decodedName}" found!');
           devices.add({
             'id': r.device.remoteId.toString(),
-            'name': r.advertisementData.advName == ''
-                ? 'Unknown'
-                : r.advertisementData.advName,
+            'name': nameResult.decodedName,
             'rssi': r.rssi,
             'device': r.device,
           });
