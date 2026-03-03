@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/settings_provider.dart';
 import '../services/settings_service.dart';
+import '../widgets/split_button_dialog.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -234,26 +235,25 @@ class _SettingsState extends ConsumerState<SettingsPage> {
                       } else {
                         showDialog(
                             context: context,
-                            builder: (context) => AlertDialog(
-                                  title: const Text('Warning'),
+                            builder: (context) => SplitButtonDialog(
+                                  title: 'Are you sure?',
                                   content: Text(
                                       "If you disable the background service proximity key and the widget won't work and connection speed after opening the app might be slower."),
-                                  actions: [
-                                    TextButton(
-                                        onPressed: () {
-                                          Navigator.of(context).pop();
-                                          SettingsService.instance
-                                              .setBackgroundService(false);
-                                        },
-                                        child: const Text('Disable')),
-                                    TextButton(
-                                        onPressed: () {
-                                          Navigator.of(context).pop();
-                                          SettingsService.instance
-                                              .setBackgroundService(true);
-                                        },
-                                        child: const Text('Cancel'))
-                                  ],
+                                  secondaryButton: SplitDialogButton(
+                                    label: 'Disable',
+                                    style: SplitDialogButtonStyle.red,
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                      SettingsService.instance
+                                          .setBackgroundService(false);
+                                    },
+                                  ),
+                                  primaryButton: SplitDialogButton(
+                                    label: 'Cancel',
+                                    style: SplitDialogButtonStyle.filled,
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                  ),
                                 ));
                       }
                     },

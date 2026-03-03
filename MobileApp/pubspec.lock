@@ -720,6 +720,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.2"
+  oklch:
+    dependency: "direct main"
+    description:
+      name: oklch
+      sha256: "29574e5a4cd6fc614ab44a9b621829735f6a5fce8e33e5c17e65e2235da85b6b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0"
   package_config:
     dependency: transitive
     description:

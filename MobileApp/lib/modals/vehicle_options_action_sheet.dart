@@ -6,6 +6,7 @@ import '../models/vehicle.dart';
 import '../providers/vehicles_provider.dart';
 import '../services/vehicle_service.dart';
 import '../utils/image_utils.dart';
+import '../widgets/split_button_dialog.dart';
 
 class VehicleOptionsActionSheet {
   static void show(
@@ -75,19 +76,20 @@ class VehicleOptionsActionSheet {
 
     final confirmed = showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Vehicle'),
-        content: Text('Are you sure you want to delete ${vehicle.data.name}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
+      builder: (context) => SplitButtonDialog(
+        title: 'Delete Vehicle',
+        content:
+            Text('Are you sure you want to delete "${vehicle.data.name}"?'),
+        secondaryButton: SplitDialogButton(
+          label: 'Delete',
+          style: SplitDialogButtonStyle.red,
+          onPressed: () => Navigator.of(context).pop(true),
+        ),
+        primaryButton: SplitDialogButton(
+          label: 'Cancel',
+          style: SplitDialogButtonStyle.filled,
+          onPressed: () => Navigator.of(context).pop(false),
+        ),
       ),
     );
     if (!(await confirmed)) return;

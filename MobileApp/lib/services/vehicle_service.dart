@@ -6,6 +6,8 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../modals/authentication_failed_dialog.dart';
+import '../modals/protocol_version_mismatch_dialog.dart';
 import '../providers/settings_provider.dart';
 import '../providers/vehicles_provider.dart';
 import '../types/ble_commands.dart';
@@ -13,7 +15,6 @@ import '../models/ble_device.dart';
 import '../models/vehicle.dart';
 import '../types/vehicle_data.dart';
 import '../utils/esp32_response_parser.dart';
-import '../utils/image_utils.dart';
 import 'ble_background_service.dart';
 import 'ble_service.dart';
 import 'settings_service.dart';
@@ -168,43 +169,15 @@ class VehicleService {
           .data
           .name;
 
-      showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-                title: const Text('Protocol Version Mismatch'),
-                content: Text(
-                    '$vehicleName is on protocol version $deviceProtocolVersion and the app is on ${BleBackgroundService.PROTOCOL_VERSION}. Everything you need might still work, but if not please update your ESP32/app to the newest version.'),
-                actions: [
-                  TextButton(
-                      onPressed: Navigator.of(context).pop,
-                      child: const Text('Okay')),
-                  TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        SettingsService.instance
-                            .setIgnoreProtocolMismatch(true);
-                      },
-                      child: const Text("Don't show this again")),
-                ],
-              ));
+      ProtocolVersionMismatchDialog.show(
+          context, vehicleName, deviceProtocolVersion);
     } else if (data.command == Esp32Response.INVALID_HMAC) {
       if (vehiclesState.unauthenticatedVehicles.contains(data.macAddress)) {
         return;
       }
       vehiclesNotifier.addUnauthenticatedVehicle(data.macAddress);
 
-      showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-                title: const Text('Invalid HMAC'),
-                content: Text(
-                    'Invalid HMAC/rolling code for device ${data.macAddress}. Please remove the vehicle then hold down the button labeled BOOT on yor ESP32 for 5 sec and re-add it to the app.'),
-                actions: [
-                  TextButton(
-                      onPressed: Navigator.of(context).pop,
-                      child: const Text('Okay'))
-                ],
-              ));
+      AuthenticationFailedDialog.show(context, data);
     } else if (data.command == Esp32Response.LOCKED ||
         data.command == Esp32Response.PROXIMITY_LOCKED) {
       debugPrint('[VehicleService] set vehicle locked');
