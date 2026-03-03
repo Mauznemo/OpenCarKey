@@ -14,18 +14,38 @@ import '../types/ble_commands.dart';
 import '../types/features.dart';
 import '../utils/image_utils.dart';
 
-class VehicleTile extends ConsumerWidget {
+class VehicleTile extends ConsumerStatefulWidget {
   final Vehicle vehicle;
   final int index;
   const VehicleTile({super.key, required this.vehicle, required this.index});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<VehicleTile> createState() => _VehicleTileState();
+}
+
+class _VehicleTileState extends ConsumerState<VehicleTile> {
+  bool _doorsCommandSending = false;
+  bool _trunkCommandSending = false;
+  bool _engineCommandSending = false;
+
+  Widget _buildLoadingSpinner() {
+    return SizedBox(
+      width: 20,
+      height: 20,
+      child: CircularProgressIndicator(
+        strokeWidth: 3,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final vehiclesState = ref.watch(vehiclesProvider);
     final settingsState = ref.watch(settingsProvider);
-    File? imageFile = vehicle.data.imagePath.isEmpty
+    File? imageFile = widget.vehicle.data.imagePath.isEmpty
         ? null
-        : ImageUtils.loadSavedImage(vehicle.data.imagePath);
+        : ImageUtils.loadSavedImage(widget.vehicle.data.imagePath);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -61,11 +81,18 @@ class VehicleTile extends ConsumerWidget {
               enableFeedback: false,
               onLongPress: () async {
                 HapticFeedback.lightImpact();
-                VehicleOptionsActionSheet.show(context, ref, vehicle, index);
+                VehicleOptionsActionSheet.show(
+                  context,
+                  ref,
+                  widget.vehicle,
+                  widget.index,
+                );
               },
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -74,32 +101,34 @@ class VehicleTile extends ConsumerWidget {
                     Row(
                       children: [
                         Icon(
-                          vehicle.device.isConnected
+                          widget.vehicle.device.isConnected
                               ? Icons.bluetooth_audio
                               : Icons.bluetooth_disabled_rounded,
-                          color: vehicle.device.isConnected
+                          color: widget.vehicle.device.isConnected
                               ? Colors.green
                               : Colors.red,
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          vehicle.data.name,
+                          widget.vehicle.data.name,
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
                         const SizedBox(width: 10),
-                        if (vehicle.data.noProximityKey)
+                        if (widget.vehicle.data.noProximityKey)
                           const Icon(Icons.location_disabled),
                         const SizedBox(width: 10),
-                        if (vehiclesState.unauthenticatedVehicles
-                            .contains(vehicle.device.macAddress.toString()))
+                        if (vehiclesState.unauthenticatedVehicles.contains(
+                          widget.vehicle.device.macAddress.toString(),
+                        ))
                           Tooltip(
                             message: 'Authentication failed',
                             triggerMode: TooltipTriggerMode.tap,
                             showDuration: const Duration(seconds: 2),
                             child: const Icon(Icons.pin, color: Colors.amber),
                           ),
-                        if (vehiclesState.outdatedVehicles
-                            .contains(vehicle.device.macAddress.toString()))
+                        if (vehiclesState.outdatedVehicles.contains(
+                          widget.vehicle.device.macAddress.toString(),
+                        ))
                           Tooltip(
                             triggerMode: TooltipTriggerMode.tap,
                             showDuration: const Duration(seconds: 5),
@@ -117,7 +146,7 @@ class VehicleTile extends ConsumerWidget {
                       Padding(
                         padding: const EdgeInsets.only(left: 8.0, bottom: 4.0),
                         child: Text(
-                          'Mac Address: ${vehicle.data.macAddress}',
+                          'Mac Address: ${widget.vehicle.data.macAddress}',
                           style: const TextStyle(fontSize: 12),
                         ),
                       ),
@@ -128,38 +157,70 @@ class VehicleTile extends ConsumerWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _ActionButton(
-                          icon: Icon(
-                            vehicle.doorsLocked ? Icons.lock : Icons.lock_open,
-                            size: 30,
-                          ),
-                          onPressed: vehicle.device.isConnected
-                              ? () {
-                                  BleBackgroundService.sendCommand(
-                                    vehicle.device,
-                                    vehicle.doorsLocked
+                          icon: _doorsCommandSending
+                              ? _buildLoadingSpinner()
+                              : Icon(
+                                  widget.vehicle.doorsLocked
+                                      ? Icons.lock
+                                      : Icons.lock_open,
+                                  size: 30,
+                                ),
+                          onPressed: widget.vehicle.device.isConnected
+                              ? () async {
+                                  if (_doorsCommandSending) return;
+
+                                  setState(() {
+                                    _doorsCommandSending = true;
+                                  });
+
+                                  await BleBackgroundService.sendCommand(
+                                    widget.vehicle.device,
+                                    widget.vehicle.doorsLocked
                                         ? ClientCommand.UNLOCK_DOORS
                                         : ClientCommand.LOCK_DOORS,
                                   );
+
+                                  setState(() {
+                                    _doorsCommandSending = false;
+                                  });
                                 }
                               : null,
                         ),
-                        if (vehicle.data.features.contains(Feature.trunkOpen))
+                        if (widget.vehicle.data.features.contains(
+                          Feature.trunkOpen,
+                        ))
                           _ActionButton(
-                            icon: const Icon(Icons.directions_car_outlined,
-                                size: 30),
-                            onPressed: vehicle.device.isConnected
-                                ? () {
-                                    BleBackgroundService.sendCommand(
-                                      vehicle.device,
+                            icon: _trunkCommandSending
+                                ? _buildLoadingSpinner()
+                                : const Icon(
+                                    Icons.directions_car_outlined,
+                                    size: 30,
+                                  ),
+                            onPressed: widget.vehicle.device.isConnected
+                                ? () async {
+                                    if (_trunkCommandSending) return;
+
+                                    setState(() {
+                                      _trunkCommandSending = true;
+                                    });
+
+                                    await BleBackgroundService.sendCommand(
+                                      widget.vehicle.device,
                                       ClientCommand.OPEN_TRUNK,
                                     );
+
+                                    setState(() {
+                                      _trunkCommandSending = false;
+                                    });
                                   }
                                 : null,
                           ),
-                        if (vehicle.data.features.contains(Feature.engine))
+                        if (widget.vehicle.data.features.contains(
+                          Feature.engine,
+                        ))
                           _ActionButton(
                             icon: const Icon(Icons.restart_alt, size: 30),
-                            onPressed: vehicle.device.isConnected
+                            onPressed: widget.vehicle.device.isConnected
                                 ? () {
                                     // TODO: Implement engine start
                                   }
@@ -195,7 +256,7 @@ class _ActionButton extends StatelessWidget {
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
         child: IconButton(
-          icon: icon,
+          icon: SizedBox(width: 30, height: 30, child: Center(child: icon)),
           onPressed: onPressed,
         ),
       ),

@@ -41,18 +41,20 @@ class BleBackgroundService {
   static final List<int> _sentMismatchNotifications = [];
 
   static final FlutterLocalNotificationsPlugin
-      _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
   /// Initialize the background service
   ///
   /// This should be in your main.dart before runApp
-  static Future<void> initializeService(
-      {required bool backgroundServiceEnabled}) async {
+  static Future<void> initializeService({
+    required bool backgroundServiceEnabled,
+  }) async {
     await Permission.notification.request();
 
     final isolate = Isolate.current;
     debugPrint(
-        'Starting BG service from isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
+      'Starting BG service from isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}',
+    );
 
     final service = FlutterBackgroundService();
 
@@ -68,7 +70,8 @@ class BleBackgroundService {
 
     await _flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
 
     // Configure background service
@@ -101,7 +104,7 @@ class BleBackgroundService {
     }
   }
 
-// This is the background isolate function
+  // This is the background isolate function
   @pragma('vm:entry-point')
   static void onStart(ServiceInstance service) async {
     DartPluginRegistrant.ensureInitialized();
@@ -124,10 +127,13 @@ class BleBackgroundService {
 
     final isolate = Isolate.current;
     debugPrint(
-        'BG started in isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}');
+      'BG started in isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}',
+    );
 
     _updateNotification(
-        'Waiting for connection...', 'Go near a vehicle to connect.');
+      'Waiting for connection...',
+      'Go near a vehicle to connect.',
+    );
 
     await BleDeviceStorageService.clearBleDevices();
 
@@ -146,8 +152,9 @@ class BleBackgroundService {
     FlutterBluePlus.events.onConnectionStateChanged.listen((event) async {
       debugPrint('Connection state changed: ${event.connectionState}');
 
-      BackgroundVehicle? changedVehicle =
-          _getChangedVehicle(event.device.remoteId.str);
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        event.device.remoteId.str,
+      );
 
       if (vehicles.isEmpty || changedVehicle == null) {
         await VehicleStorage.reloadPrefs();
@@ -171,13 +178,10 @@ class BleBackgroundService {
         await _handleDisconnected(event, changedVehicle, ignoreProximityKey);
       }
 
-      service.invoke(
-        'connection_state_changed',
-        {
-          'macAddress': event.device.remoteId.str,
-          'connectionState': event.connectionState.toString(),
-        },
-      );
+      service.invoke('connection_state_changed', {
+        'macAddress': event.device.remoteId.str,
+        'connectionState': event.connectionState.toString(),
+      });
 
       WidgetService.reloadConnectedDevices();
     });
@@ -190,16 +194,15 @@ class BleBackgroundService {
 
       _handleMessage(espResponseData, service);
 
-      service.invoke(
-        'command_received',
-        {
-          'macAddress': espResponseData.macAddress,
-          'data': espResponseData.parser.value,
-        },
-      );
+      service.invoke('command_received', {
+        'macAddress': espResponseData.macAddress,
+        'data': espResponseData.parser.value,
+      });
 
       WidgetService.processMessage(
-          espResponseData.macAddress, espResponseData.command);
+        espResponseData.macAddress,
+        espResponseData.command,
+      );
     });
 
     _getVehicles();
@@ -217,8 +220,10 @@ class BleBackgroundService {
   static BackgroundVehicle? _getChangedVehicle(String macAddress) {
     BackgroundVehicle? changedVehicle;
     try {
-      changedVehicle = vehicles.firstWhere((backgroundVehicle) =>
-          backgroundVehicle.device.remoteId.str == macAddress);
+      changedVehicle = vehicles.firstWhere(
+        (backgroundVehicle) =>
+            backgroundVehicle.device.remoteId.str == macAddress,
+      );
     } catch (e) {
       changedVehicle = null;
     }
@@ -229,10 +234,12 @@ class BleBackgroundService {
     final vehiclesData = await VehicleStorage.getVehicles();
 
     vehicles = vehiclesData
-        .map((vehicle) => BackgroundVehicle(
-              device: BluetoothDevice.fromId(vehicle.macAddress),
-              data: vehicle,
-            ))
+        .map(
+          (vehicle) => BackgroundVehicle(
+            device: BluetoothDevice.fromId(vehicle.macAddress),
+            data: vehicle,
+          ),
+        )
         .toList();
 
     _connectDevices();
@@ -266,24 +273,29 @@ class BleBackgroundService {
     }
   }
 
-  static Future<void> _handleConnected(OnConnectionStateChangedEvent event,
-      BackgroundVehicle vehicle, bool ignoreProximityKey) async {
+  static Future<void> _handleConnected(
+    OnConnectionStateChangedEvent event,
+    BackgroundVehicle vehicle,
+    bool ignoreProximityKey,
+  ) async {
     // Give the connection a moment to stabilize
     await Future.delayed(Duration(milliseconds: 500));
 
     //Sub to notifications from the device
     await event.device.requestMtu(64);
     final services = await event.device.discoverServices();
-    final service = services.firstWhere((service) =>
-        service.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'));
+    final service = services.firstWhere(
+      (service) => service.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'),
+    );
     final characteristic = service.characteristics.firstWhere(
-        (characteristic) =>
-            characteristic.uuid ==
-            Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
+      (characteristic) =>
+          characteristic.uuid == Guid('0000ffe1-0000-1000-8000-00805f9b34fb'),
+    );
 
     await characteristic.setNotifyValue(true);
-    final notificationSubscription =
-        characteristic.onValueReceived.listen((value) {
+    final notificationSubscription = characteristic.onValueReceived.listen((
+      value,
+    ) {
       if (value.isEmpty) {
         debugPrint('Received empty value from characteristic.');
         return;
@@ -298,10 +310,13 @@ class BleBackgroundService {
       }
 
       _onMessageReceived.value = Esp32ResponseDate(
-          macAddress: event.device.remoteId
-              .str, // Assuming 'event' is available in this scope
-          command: command,
-          parser: parser);
+        macAddress: event
+            .device
+            .remoteId
+            .str, // Assuming 'event' is available in this scope
+        command: command,
+        parser: parser,
+      );
     });
 
     _subscriptions[event.device.remoteId.str] = notificationSubscription;
@@ -310,11 +325,15 @@ class BleBackgroundService {
     await Future.delayed(Duration(milliseconds: 200));
 
     if (_proximityKeyEnabled && !ignoreProximityKey) {
-      _updateNotification('Connected to ${vehicle.data.name}',
-          '${vehicle.data.name} connected. Go closer to unlock!');
+      _updateNotification(
+        'Connected to ${vehicle.data.name}',
+        '${vehicle.data.name} connected. Go closer to unlock!',
+      );
     } else {
-      _updateNotification('Connected to ${vehicle.data.name}',
-          '${vehicle.data.name} connected.');
+      _updateNotification(
+        'Connected to ${vehicle.data.name}',
+        '${vehicle.data.name} connected.',
+      );
     }
 
     await BleService.sendCommand(vehicle.device, ClientCommand.GET_FEATURES);
@@ -325,24 +344,35 @@ class BleBackgroundService {
     if (_proximityKeyEnabled && !ignoreProximityKey) {
       await Future.delayed(Duration(milliseconds: 200));
 
-      await BleService.sendCommandWithFloats(vehicle.device,
-          ClientCommand.RSSI_TRIGGER, [_proximityStrength, _deadZone]);
+      await BleService.sendCommandWithFloats(
+        vehicle.device,
+        ClientCommand.RSSI_TRIGGER,
+        [_proximityStrength, _deadZone],
+      );
 
       await Future.delayed(Duration(milliseconds: 200));
 
       await BleService.sendCommandWithFloat(
-          vehicle.device, ClientCommand.PROXIMITY_COOLDOWN, _proximityCooldown);
+        vehicle.device,
+        ClientCommand.PROXIMITY_COOLDOWN,
+        _proximityCooldown,
+      );
       await Future.delayed(Duration(milliseconds: 200));
 
       await BleService.sendCommand(
-          vehicle.device, ClientCommand.PROXIMITY_KEY_ON);
+        vehicle.device,
+        ClientCommand.PROXIMITY_KEY_ON,
+      );
     }
 
     await BleDeviceStorageService.addDevice(vehicle.device.remoteId.str);
   }
 
-  static Future<void> _handleDisconnected(OnConnectionStateChangedEvent event,
-      BackgroundVehicle vehicle, bool ignoreProximityKey) async {
+  static Future<void> _handleDisconnected(
+    OnConnectionStateChangedEvent event,
+    BackgroundVehicle vehicle,
+    bool ignoreProximityKey,
+  ) async {
     final subscription = _subscriptions[event.device.remoteId.str];
 
     if (subscription != null) {
@@ -352,11 +382,14 @@ class BleBackgroundService {
 
     if (_proximityKeyEnabled && !ignoreProximityKey) {
       _updateNotification(
-          'Disconnected from ${vehicle.data.name} (Proxy Locked)',
-          '${vehicle.data.name} disconnected and was locked. Waiting for connection...');
+        'Disconnected from ${vehicle.data.name} (Proxy Locked)',
+        '${vehicle.data.name} disconnected and was locked. Waiting for connection...',
+      );
     } else {
-      _updateNotification('Disconnected from ${vehicle.data.name}',
-          '${vehicle.data.name} is disconnected. Waiting for connection...');
+      _updateNotification(
+        'Disconnected from ${vehicle.data.name}',
+        '${vehicle.data.name} is disconnected. Waiting for connection...',
+      );
     }
 
     // The device was disconnected without having time to say it locked, so let the user know it was locked here
@@ -367,14 +400,17 @@ class BleBackgroundService {
       _vibrateLongTwice();
     } else {
       debugPrint(
-          'Not vibrating on disconnect, _proximityKeyEnabled: $_proximityKeyEnabled, _vibrate: $_vibrate, ignoreProximityKey: $ignoreProximityKey, vehicle.doorsLocked: ${vehicle.doorsLocked}');
+        'Not vibrating on disconnect, _proximityKeyEnabled: $_proximityKeyEnabled, _vibrate: $_vibrate, ignoreProximityKey: $ignoreProximityKey, vehicle.doorsLocked: ${vehicle.doorsLocked}',
+      );
     }
 
     await BleDeviceStorageService.removeDevice(vehicle.device.remoteId.str);
   }
 
   static Future<void> _handleMessage(
-      Esp32ResponseDate espResponseData, ServiceInstance service) async {
+    Esp32ResponseDate espResponseData,
+    ServiceInstance service,
+  ) async {
     if (espResponseData.command == Esp32Response.VERSION) {
       await _prefs.reload();
       final ignoreProtocolMismatch =
@@ -382,12 +418,14 @@ class BleBackgroundService {
       final deviceProtocolVersion = espResponseData.parser.getString();
 
       debugPrint(
-          'Device protocol version: $deviceProtocolVersion, ignoreProtocolMismatch: $ignoreProtocolMismatch');
+        'Device protocol version: $deviceProtocolVersion, ignoreProtocolMismatch: $ignoreProtocolMismatch',
+      );
 
       if (deviceProtocolVersion != PROTOCOL_VERSION &&
           !ignoreProtocolMismatch) {
-        BackgroundVehicle? changedVehicle =
-            _getChangedVehicle(espResponseData.macAddress);
+        BackgroundVehicle? changedVehicle = _getChangedVehicle(
+          espResponseData.macAddress,
+        );
 
         if (changedVehicle != null) {
           int notificationId =
@@ -412,8 +450,9 @@ class BleBackgroundService {
         }
       }
     } else if (espResponseData.command == Esp32Response.FEATURES) {
-      BackgroundVehicle? changedVehicle =
-          _getChangedVehicle(espResponseData.macAddress);
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
 
       if (changedVehicle != null) {
         int? featuresBitmask = espResponseData.parser.getInt32();
@@ -426,18 +465,16 @@ class BleBackgroundService {
         final data = changedVehicle.data;
         await VehicleStorage.updateVehicle(data.copyWith(features: features));
 
-        service.invoke(
-          'reload_vehicle_data',
-          {
-            'macAddress': espResponseData.macAddress,
-          },
-        );
+        service.invoke('reload_vehicle_data', {
+          'macAddress': espResponseData.macAddress,
+        });
 
         WidgetService.reloadVehicles();
       }
     } else if (espResponseData.command == Esp32Response.PROXIMITY_LOCKED) {
-      BackgroundVehicle? changedVehicle =
-          _getChangedVehicle(espResponseData.macAddress);
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
 
       changedVehicle?.doorsLocked = true;
 
@@ -446,11 +483,13 @@ class BleBackgroundService {
       }
 
       _updateNotification(
-          'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Locked)',
-          '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and locked since it is too far away.');
+        'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Locked)',
+        '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and locked since it is too far away.',
+      );
     } else if (espResponseData.command == Esp32Response.PROXIMITY_UNLOCKED) {
-      BackgroundVehicle? changedVehicle =
-          _getChangedVehicle(espResponseData.macAddress);
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
 
       changedVehicle?.doorsLocked = false;
 
@@ -459,16 +498,19 @@ class BleBackgroundService {
       }
 
       _updateNotification(
-          'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Unlocked)',
-          '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and was unlocked.');
+        'Connected to ${changedVehicle?.data.name ?? '<Failed to load name>'} (Proxy Unlocked)',
+        '${changedVehicle?.data.name ?? '<Failed to load name>'} connected and was unlocked.',
+      );
     } else if (espResponseData.command == Esp32Response.LOCKED) {
-      BackgroundVehicle? changedVehicle =
-          _getChangedVehicle(espResponseData.macAddress);
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
 
       changedVehicle?.doorsLocked = true;
     } else if (espResponseData.command == Esp32Response.UNLOCKED) {
-      BackgroundVehicle? changedVehicle =
-          _getChangedVehicle(espResponseData.macAddress);
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
 
       changedVehicle?.doorsLocked = false;
     }
@@ -505,11 +547,17 @@ class BleBackgroundService {
         await BleService.sendCommand(vehicle.device, command);
         if (enabled) {
           await Future.delayed(Duration(milliseconds: 200));
-          await BleService.sendCommandWithFloats(vehicle.device,
-              ClientCommand.RSSI_TRIGGER, [_proximityStrength, _deadZone]);
+          await BleService.sendCommandWithFloats(
+            vehicle.device,
+            ClientCommand.RSSI_TRIGGER,
+            [_proximityStrength, _deadZone],
+          );
           await Future.delayed(Duration(milliseconds: 200));
-          await BleService.sendCommandWithFloat(vehicle.device,
-              ClientCommand.PROXIMITY_COOLDOWN, _proximityCooldown);
+          await BleService.sendCommandWithFloat(
+            vehicle.device,
+            ClientCommand.PROXIMITY_COOLDOWN,
+            _proximityCooldown,
+          );
         }
       }
     });
@@ -521,7 +569,10 @@ class BleBackgroundService {
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
         await BleService.sendCommandWithFloat(
-            vehicle.device, ClientCommand.PROXIMITY_COOLDOWN, cooldown);
+          vehicle.device,
+          ClientCommand.PROXIMITY_COOLDOWN,
+          cooldown,
+        );
       }
     });
 
@@ -546,8 +597,11 @@ class BleBackgroundService {
       _deadZone = deadZone;
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
-        await BleService.sendCommandWithFloats(vehicle.device,
-            ClientCommand.RSSI_TRIGGER, [_proximityStrength, deadZone]);
+        await BleService.sendCommandWithFloats(
+          vehicle.device,
+          ClientCommand.RSSI_TRIGGER,
+          [_proximityStrength, deadZone],
+        );
       }
     });
 
@@ -557,8 +611,11 @@ class BleBackgroundService {
       _proximityStrength = strength;
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
-        await BleService.sendCommandWithFloats(vehicle.device,
-            ClientCommand.RSSI_TRIGGER, [_proximityStrength, _deadZone]);
+        await BleService.sendCommandWithFloats(
+          vehicle.device,
+          ClientCommand.RSSI_TRIGGER,
+          [_proximityStrength, _deadZone],
+        );
       }
     });
 
@@ -574,15 +631,33 @@ class BleBackgroundService {
       }
     });
 
-    service.on('send_command').listen((event) {
+    service.on('send_command').listen((event) async {
       if (event == null) return;
+
+      final String? correlationId = event['correlationId'];
       BluetoothDevice device = BluetoothDevice.fromId(event['macAddress']);
       ClientCommand? command = ClientCommand.fromValue(event['command']);
       Uint8List? additionalData = event['additionalData'];
 
       if (command == null) return;
 
-      BleService.sendCommand(device, command, additionalData: additionalData);
+      try {
+        await BleService.sendCommand(
+          device,
+          command,
+          additionalData: additionalData,
+        );
+        service.invoke('send_command_result', {
+          'correlationId': correlationId,
+          'success': true,
+        });
+      } catch (e) {
+        service.invoke('send_command_result', {
+          'correlationId': correlationId,
+          'success': false,
+          'error': e.toString(),
+        });
+      }
     });
 
     service.on('disconnect_device').listen((event) {
@@ -601,16 +676,19 @@ class BleBackgroundService {
 
       try {
         final bluetoothDevice = await BleService.connectToDevice(
-            BluetoothDevice.fromId(macAddress));
+          BluetoothDevice.fromId(macAddress),
+        );
 
         // Send the result back
         service.invoke('connect_result', {
           'requestId': requestId,
-          'macAddress': bluetoothDevice?.remoteId.str
+          'macAddress': bluetoothDevice?.remoteId.str,
         });
       } catch (e) {
-        service.invoke(
-            'connect_result', {'requestId': requestId, 'error': e.toString()});
+        service.invoke('connect_result', {
+          'requestId': requestId,
+          'error': e.toString(),
+        });
       }
     });
   }
@@ -658,26 +736,29 @@ class BleBackgroundService {
 
     final completer = Completer<BleDevice>();
 
-    final subscription = _service.on('connect_result').listen((response) {
+    late StreamSubscription<Map<String, dynamic>?> sub;
+    sub = _service.on('connect_result').listen((response) {
       if (response != null && response['requestId'] == requestId) {
         if (response.containsKey('error')) {
           completer.completeError(response['error']);
         } else {
           completer.complete(BleDevice(macAddress: response['macAddress']));
         }
-        //subscription.cancel(); //TODO: Cancel the subscription after getting the response
+        sub.cancel();
       }
     });
 
     // Send the request with the request ID
-    _service.invoke('connect_to_device',
-        {'macAddress': device.remoteId.str, 'requestId': requestId});
+    _service.invoke('connect_to_device', {
+      'macAddress': device.remoteId.str,
+      'requestId': requestId,
+    });
 
     // Add timeout handling
     Timer(Duration(seconds: 30), () {
       if (!completer.isCompleted) {
         completer.completeError('Connection timeout');
-        subscription.cancel();
+        sub.cancel();
       }
     });
 
@@ -721,12 +802,47 @@ class BleBackgroundService {
   }
 
   /// Send a command to a device.
-  static void sendCommand(BleDevice device, ClientCommand command,
-      {Uint8List? additionalData}) {
+  static Future<void> sendCommand(
+    BleDevice device,
+    ClientCommand command, {
+    Uint8List? additionalData,
+  }) async {
+    final String correlationId = DateTime.now().microsecondsSinceEpoch
+        .toString();
+
+    final completer = Completer<void>();
+
+    // Set up a timeout so we don't wait forever
+    final timeout = Timer(const Duration(seconds: 10), () {
+      if (!completer.isCompleted) {
+        completer.completeError(TimeoutException('sendCommand timed out'));
+      }
+    });
+
+    // Listen for the matching result
+    late StreamSubscription<Map<String, dynamic>?> sub;
+    sub = FlutterBackgroundService().on('send_command_result').listen((event) {
+      if (event == null) return;
+      if (event['correlationId'] != correlationId) return; // Not our response
+
+      sub.cancel();
+      timeout.cancel();
+
+      if (event['success'] == true) {
+        Future.delayed(Duration(milliseconds: 100), () => completer.complete());
+      } else {
+        completer.completeError(Exception(event['error'] ?? 'Unknown error'));
+      }
+    });
+
+    // Send the command
     _service.invoke('send_command', {
+      'correlationId': correlationId,
       'macAddress': device.macAddress,
       'command': command.value,
-      'additionalData': additionalData
+      'additionalData': additionalData,
     });
+
+    return completer.future;
   }
 }
