@@ -16,4 +16,7 @@ abstract class VehiclesState with _$VehiclesState {
 
   List<Vehicle> get connectedVehicles =>
       vehicles.where((vehicle) => vehicle.device.isConnected).toList();
+
+  List<Vehicle> get orderedVehicles =>
+      vehicles.toList()..sort((a, b) => a.data.index.compareTo(b.data.index));
 }

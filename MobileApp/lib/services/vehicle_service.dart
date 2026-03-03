@@ -224,15 +224,69 @@ class VehicleService {
     BleBackgroundService.reloadHomescreenWidget();
   }
 
-  void updateVehicleData(VehicleData vehicle) async {
+  void updateVehicleData(VehicleData vehicle,
+      {bool reloadBackgroundService = true}) async {
     await VehicleStorage.updateVehicle(vehicle);
     ref.read(vehiclesProvider.notifier).updateVehicleData(vehicle);
 
-    BleBackgroundService.reloadVehicles();
-    BleBackgroundService.reloadHomescreenWidget();
+    if (reloadBackgroundService) {
+      BleBackgroundService.reloadVehicles();
+      BleBackgroundService.reloadHomescreenWidget();
+    }
+  }
+
+  void moveVehicleDown(Vehicle vehicle, int realIndex) {
+    final vehicles = ref.read(vehiclesProvider).vehicles;
+    final maxIndex = vehicles.length - 1;
+    if (realIndex >= maxIndex) return;
+
+    final swapTarget = vehicles[realIndex + 1];
+    final updatedVehicles = vehicles.map((v) {
+      if (v.data.macAddress == vehicle.data.macAddress) {
+        return v.copyWith(data: v.data.copyWith(index: realIndex + 1));
+      }
+      if (v.data.macAddress == swapTarget.data.macAddress) {
+        return v.copyWith(data: v.data.copyWith(index: realIndex));
+      }
+      return v;
+    }).toList();
+
+    _applyReorder(updatedVehicles);
+  }
+
+  void moveVehicleUp(Vehicle vehicle, int realIndex) {
+    final vehicles = ref.read(vehiclesProvider).vehicles;
+    if (realIndex <= 0) return;
+
+    final swapTarget = vehicles[realIndex - 1];
+    final updatedVehicles = vehicles.map((v) {
+      if (v.data.macAddress == vehicle.data.macAddress) {
+        return v.copyWith(data: v.data.copyWith(index: realIndex - 1));
+      }
+      if (v.data.macAddress == swapTarget.data.macAddress) {
+        return v.copyWith(data: v.data.copyWith(index: realIndex));
+      }
+      return v;
+    }).toList();
+
+    _applyReorder(updatedVehicles);
+  }
+
+  void _applyReorder(List<Vehicle> updatedVehicles) {
+    ref.read(vehiclesProvider.notifier).setVehicles(updatedVehicles);
+    VehicleStorage.saveVehicles(updatedVehicles.map((v) => v.data).toList());
   }
 
   void removeVehicle(String macAddress) async {
+    if (ref
+        .read(vehiclesProvider)
+        .unauthenticatedVehicles
+        .contains(macAddress)) {
+      ref
+          .read(vehiclesProvider.notifier)
+          .removeUnauthenticatedVehicle(macAddress);
+    }
+
     await VehicleStorage.removeVehicle(macAddress);
     ref.read(vehiclesProvider.notifier).removeVehicle(macAddress);
 

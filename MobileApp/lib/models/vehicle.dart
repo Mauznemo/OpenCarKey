@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'ble_device.dart';

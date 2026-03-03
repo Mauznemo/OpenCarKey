@@ -46,6 +46,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final vehiclesState = ref.watch(vehiclesProvider);
     final settingsState = ref.watch(settingsProvider);
 
+    final orderedVehicles = vehiclesState.orderedVehicles;
     return Scaffold(
         appBar: AppBar(
           title: const Text('Open Car Key'),
@@ -88,10 +89,10 @@ class _HomePageState extends ConsumerState<HomePage> {
             Spacer(),
             ListView.builder(
                 shrinkWrap: true,
-                itemCount: vehiclesState.vehicles.length,
+                itemCount: orderedVehicles.length,
                 itemBuilder: (context, index) {
-                  Vehicle vehicle = vehiclesState.vehicles[index];
-                  return VehicleTile(vehicle: vehicle);
+                  Vehicle vehicle = orderedVehicles[index];
+                  return VehicleTile(vehicle: vehicle, index: index);
                 }),
             Spacer(),
           ],

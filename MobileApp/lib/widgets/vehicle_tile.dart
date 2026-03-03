@@ -2,21 +2,22 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../components/edit_vehicle_bottom_sheet.dart';
+import '../modals/vehicle_options_action_sheet.dart';
 import '../models/vehicle.dart';
 import '../providers/settings_provider.dart';
 import '../providers/vehicles_provider.dart';
 import '../services/ble_background_service.dart';
-import '../services/vehicle_service.dart';
 import '../types/ble_commands.dart';
 import '../types/features.dart';
 import '../utils/image_utils.dart';
 
 class VehicleTile extends ConsumerWidget {
   final Vehicle vehicle;
-  const VehicleTile({super.key, required this.vehicle});
+  final int index;
+  const VehicleTile({super.key, required this.vehicle, required this.index});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -64,8 +65,8 @@ class VehicleTile extends ConsumerWidget {
               ),
             ListTile(
               onLongPress: () async {
-                await EditVehicleBottomSheet.showBottomSheet(context, vehicle);
-                ImageUtils.deleteUnusedImages();
+                HapticFeedback.lightImpact();
+                VehicleOptionsActionSheet.show(context, ref, vehicle, index);
               },
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20.0)),
@@ -220,42 +221,6 @@ class VehicleTile extends ConsumerWidget {
                   ),
                   if (!settingsState.showMacAddress) const SizedBox(height: 5),
                 ],
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete),
-                onPressed: () async {
-                  final confirmed = showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Delete Vehicle'),
-                      content: Text(
-                          'Are you sure you want to delete ${vehicle.data.name}?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (!(await confirmed)) return;
-                  print('Deleting vehicle: ${vehicle.data.name}');
-
-                  if (vehiclesState.unauthenticatedVehicles
-                      .contains(vehicle.device.macAddress)) {
-                    ref
-                        .read(vehiclesProvider.notifier)
-                        .removeUnauthenticatedVehicle(
-                            vehicle.device.macAddress);
-                  }
-
-                  VehicleService.instance
-                      .removeVehicle(vehicle.data.macAddress);
-                },
               ),
             ),
           ])),

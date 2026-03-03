@@ -9,6 +9,7 @@ class VehicleData {
   final Set<Feature> features;
   final bool noProximityKey;
   final String imagePath;
+  int index = 0;
 
   VehicleData({
     required this.name,
@@ -17,6 +18,7 @@ class VehicleData {
     required this.features,
     this.noProximityKey = false,
     this.imagePath = '',
+    this.index = 0,
   });
 
   VehicleData copyWith({
@@ -26,6 +28,7 @@ class VehicleData {
     Set<Feature>? features,
     bool? noProximityKey,
     String? imagePath,
+    int? index,
   }) {
     return VehicleData(
       name: name ?? this.name,
@@ -34,6 +37,7 @@ class VehicleData {
       features: features ?? this.features,
       noProximityKey: noProximityKey ?? this.noProximityKey,
       imagePath: imagePath ?? this.imagePath,
+      index: index ?? this.index,
     );
   }
 
@@ -49,6 +53,7 @@ class VehicleData {
           {},
       noProximityKey: json['noProximityKey'] ?? false,
       imagePath: json['imagePath'] ?? '',
+      index: json['index'] ?? 0,
     );
   }
 
@@ -60,6 +65,7 @@ class VehicleData {
       'features': features.map((f) => f.toJson()).toList(),
       'noProximityKey': noProximityKey,
       'imagePath': imagePath,
+      'index': index
     };
   }
 }
