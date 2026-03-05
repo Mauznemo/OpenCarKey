@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:collection/collection.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -15,7 +16,7 @@ import '../types/background_vehicle.dart';
 import '../types/ble_commands.dart';
 import '../models/ble_device.dart';
 import '../types/features.dart';
-import '../types/vehicle_data.dart';
+import 'activity_service.dart';
 import 'ble_device_storage_service.dart';
 import 'ble_service.dart';
 import '../utils/esp32_response_parser.dart';
@@ -365,6 +366,8 @@ class BleBackgroundService {
       );
     }
 
+    ActivityService.instance.logConnectedToVehicle(vehicle.data);
+
     await BleDeviceStorageService.addDevice(vehicle.device.remoteId.str);
   }
 
@@ -403,6 +406,8 @@ class BleBackgroundService {
         'Not vibrating on disconnect, _proximityKeyEnabled: $_proximityKeyEnabled, _vibrate: $_vibrate, ignoreProximityKey: $ignoreProximityKey, vehicle.doorsLocked: ${vehicle.doorsLocked}',
       );
     }
+
+    ActivityService.instance.logDisconnectedFromVehicle(vehicle.data);
 
     await BleDeviceStorageService.removeDevice(vehicle.device.remoteId.str);
   }
@@ -471,12 +476,20 @@ class BleBackgroundService {
 
         WidgetService.reloadVehicles();
       }
+    } else if (espResponseData.command == Esp32Response.INVALID_HMAC) {
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
+
+      ActivityService.instance.logAuthenticationFailed(changedVehicle?.data);
     } else if (espResponseData.command == Esp32Response.PROXIMITY_LOCKED) {
       BackgroundVehicle? changedVehicle = _getChangedVehicle(
         espResponseData.macAddress,
       );
 
       changedVehicle?.doorsLocked = true;
+
+      ActivityService.instance.logProximityLocked(changedVehicle?.data);
 
       if (_vibrate) {
         _vibrateLongTwice();
@@ -492,6 +505,8 @@ class BleBackgroundService {
       );
 
       changedVehicle?.doorsLocked = false;
+
+      ActivityService.instance.logProximityUnlocked(changedVehicle?.data);
 
       if (_vibrate) {
         _vibrateLongTwice();
@@ -647,6 +662,12 @@ class BleBackgroundService {
           command,
           additionalData: additionalData,
         );
+
+        final vehicle = vehicles.firstWhereOrNull(
+          (v) => v.data.macAddress == device.remoteId.str,
+        );
+        ActivityService.instance.logFromCommand(command, vehicle?.data);
+
         service.invoke('send_command_result', {
           'correlationId': correlationId,
           'success': true,
