@@ -5,7 +5,7 @@ body:
     - type: dropdown
       id: type
       attributes:
-          label: Is this bug in
+          label: This bug is in
           options:
               - Mobile App
               - Lock Controller
@@ -35,8 +35,6 @@ body:
       attributes:
           label: Expected behavior
           placeholder: A clear and concise description of what you expected to happen.
-      validations:
-          required: true
     - type: textarea
       id: additional
       attributes:
