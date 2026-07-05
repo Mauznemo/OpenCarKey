@@ -3,6 +3,17 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // The home_widget plugin depends on androidx.glance:glance-appwidget:1.+ (a floating
+    // version range). That range can silently resolve to a new alpha release requiring a
+    // newer compileSdk/AGP than this project uses, breaking the build without any change
+    // on our side. Force it to the latest stable release everywhere, including plugin
+    // subprojects like :home_widget.
+    configurations.all {
+        resolutionStrategy {
+            force 'androidx.glance:glance-appwidget:1.1.1'
+        }
+    }
 }
 
 rootProject.buildDir = "../build"
