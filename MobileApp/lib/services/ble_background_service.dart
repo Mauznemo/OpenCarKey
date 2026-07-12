@@ -32,6 +32,18 @@ class BleBackgroundService {
   static final ValueNotifier<Esp32ResponseDate?> _onMessageReceived =
       ValueNotifier<Esp32ResponseDate?>(null);
   static final Map<String, StreamSubscription> _subscriptions = {};
+
+  // Top-level listeners registered in [onStart]. Tracked so repeated onStart
+  // invocations (iOS foreground transitions, service restarts) tear down the
+  // previous registration instead of stacking duplicate listeners on top.
+  static StreamSubscription<OnConnectionStateChangedEvent>? _connectionStateSub;
+  static final List<StreamSubscription<Map<String, dynamic>?>>
+      _serviceEventSubs = [];
+  static VoidCallback? _messageListener;
+  static ServiceInstance? _serviceInstance;
+  // MACs that have reached a real connected state, so we only log disconnects
+  // for devices that were actually connected (not autoConnect phantoms).
+  static final Set<String> _connectedMacs = {};
   static final FlutterBackgroundService _service = FlutterBackgroundService();
   static late SharedPreferences _prefs;
   static bool _proximityKeyEnabled = false;
@@ -148,65 +160,104 @@ class BleBackgroundService {
 
     WidgetService.initialize(backgroundServiceEnabled: backgroundService);
 
+    // onStart can run multiple times within the same isolate (iOS foreground
+    // transitions, service restarts). Tear down the previous registration first
+    // so listeners don't stack up and fire an event once per past invocation.
+    _serviceInstance = service;
+    await _teardownListeners();
+
     _handleServiceEvents(service);
 
-    FlutterBluePlus.events.onConnectionStateChanged.listen((event) async {
-      debugPrint('Connection state changed: ${event.connectionState}');
+    _connectionStateSub =
+        FlutterBluePlus.events.onConnectionStateChanged.listen(
+      _handleConnectionStateChanged,
+    );
 
-      BackgroundVehicle? changedVehicle = _getChangedVehicle(
-        event.device.remoteId.str,
-      );
+    _messageListener = _handleMessageNotifier;
+    _onMessageReceived.addListener(_messageListener!);
 
-      if (vehicles.isEmpty || changedVehicle == null) {
-        await VehicleStorage.reloadPrefs();
-        await _getVehicles();
-        changedVehicle = _getChangedVehicle(event.device.remoteId.str);
-      }
+    _getVehicles();
+  }
 
-      if (vehicles.isEmpty || changedVehicle == null) {
-        debugPrint('No vehicle found, not updating connection state');
-        return;
-      }
+  /// Cancels every top-level listener registered by [onStart] so it can be
+  /// safely re-registered without duplicating.
+  static Future<void> _teardownListeners() async {
+    await _connectionStateSub?.cancel();
+    _connectionStateSub = null;
 
-      changedVehicle.device = event.device;
+    for (final sub in _serviceEventSubs) {
+      await sub.cancel();
+    }
+    _serviceEventSubs.clear();
 
-      final bool ignoreProximityKey = changedVehicle.data.noProximityKey;
+    if (_messageListener != null) {
+      _onMessageReceived.removeListener(_messageListener!);
+      _messageListener = null;
+    }
+  }
 
-      if (event.connectionState == BluetoothConnectionState.connected) {
-        await _handleConnected(event, changedVehicle, ignoreProximityKey);
-      } else if (event.connectionState ==
-          BluetoothConnectionState.disconnected) {
-        await _handleDisconnected(event, changedVehicle, ignoreProximityKey);
-      }
+  static Future<void> _handleConnectionStateChanged(
+    OnConnectionStateChangedEvent event,
+  ) async {
+    debugPrint('Connection state changed: ${event.connectionState}');
 
-      service.invoke('connection_state_changed', {
-        'macAddress': event.device.remoteId.str,
-        'connectionState': event.connectionState.toString(),
-      });
+    final service = _serviceInstance;
 
-      WidgetService.reloadConnectedDevices();
+    BackgroundVehicle? changedVehicle = _getChangedVehicle(
+      event.device.remoteId.str,
+    );
+
+    if (vehicles.isEmpty || changedVehicle == null) {
+      await VehicleStorage.reloadPrefs();
+      await _getVehicles();
+      changedVehicle = _getChangedVehicle(event.device.remoteId.str);
+    }
+
+    if (vehicles.isEmpty || changedVehicle == null) {
+      debugPrint('No vehicle found, not updating connection state');
+      return;
+    }
+
+    changedVehicle.device = event.device;
+
+    final bool ignoreProximityKey = changedVehicle.data.noProximityKey;
+
+    if (event.connectionState == BluetoothConnectionState.connected) {
+      await _handleConnected(event, changedVehicle, ignoreProximityKey);
+    } else if (event.connectionState ==
+        BluetoothConnectionState.disconnected) {
+      await _handleDisconnected(event, changedVehicle, ignoreProximityKey);
+    }
+
+    service?.invoke('connection_state_changed', {
+      'macAddress': event.device.remoteId.str,
+      'connectionState': event.connectionState.toString(),
     });
 
-    _onMessageReceived.addListener(() async {
-      final espResponseData = _onMessageReceived.value;
-      if (espResponseData == null) return;
+    WidgetService.reloadConnectedDevices();
+  }
 
-      debugPrint('Message received: ${espResponseData.command}');
+  static Future<void> _handleMessageNotifier() async {
+    final espResponseData = _onMessageReceived.value;
+    if (espResponseData == null) return;
 
+    final service = _serviceInstance;
+
+    debugPrint('Message received: ${espResponseData.command}');
+
+    if (service != null) {
       _handleMessage(espResponseData, service);
 
       service.invoke('command_received', {
         'macAddress': espResponseData.macAddress,
         'data': espResponseData.parser.value,
       });
+    }
 
-      WidgetService.processMessage(
-        espResponseData.macAddress,
-        espResponseData.command,
-      );
-    });
-
-    _getVehicles();
+    WidgetService.processMessage(
+      espResponseData.macAddress,
+      espResponseData.command,
+    );
   }
 
   // iOS background handler
@@ -279,6 +330,20 @@ class BleBackgroundService {
     BackgroundVehicle vehicle,
     bool ignoreProximityKey,
   ) async {
+    // flutter_blue_plus can emit repeated `connected` events for the same
+    // device (autoConnect re-arming, repeated connect() calls from
+    // _connectDevices/try_connect_all). Handle a connection only once: this
+    // both prevents duplicate "connected" log entries and stops the
+    // characteristic subscription below from leaking on top of a previous one.
+    // The MAC is removed again in _handleDisconnected, so a genuine reconnect
+    // is handled normally.
+    if (!_connectedMacs.add(event.device.remoteId.str)) {
+      debugPrint(
+        'Already connected to ${event.device.remoteId.str}, ignoring duplicate connected event',
+      );
+      return;
+    }
+
     // Give the connection a moment to stabilize
     await Future.delayed(Duration(milliseconds: 500));
 
@@ -381,6 +446,20 @@ class BleBackgroundService {
     if (subscription != null) {
       subscription.cancel();
       _subscriptions.remove(event.device.remoteId.str);
+    }
+
+    // Only treat this as a real disconnect if the device had actually
+    // connected. autoConnect can emit a `disconnected` event for a device that
+    // was never present (e.g. a vehicle added months ago and out of range),
+    // which must not produce a notification or an activity log entry.
+    final bool wasConnected =
+        _connectedMacs.remove(event.device.remoteId.str);
+    if (!wasConnected) {
+      debugPrint(
+        'Ignoring disconnect for ${event.device.remoteId.str} that was never connected',
+      );
+      await BleDeviceStorageService.removeDevice(event.device.remoteId.str);
+      return;
     }
 
     if (_proximityKeyEnabled && !ignoreProximityKey) {
@@ -533,7 +612,16 @@ class BleBackgroundService {
 
   //---------- Code for handling function calls from the frontend ----------
   static void _handleServiceEvents(ServiceInstance service) {
-    service.on('handle_app_detached').listen((event) async {
+    // Track every registration so a repeated onStart tears these down instead
+    // of stacking a second set of handlers on top.
+    void on(
+      String method,
+      void Function(Map<String, dynamic>?) handler,
+    ) {
+      _serviceEventSubs.add(service.on(method).listen(handler));
+    }
+
+    on('handle_app_detached', (event) async {
       bool backgroundService = _prefs.getBool('backgroundService') ?? true;
       if (!backgroundService) {
         service.stopSelf();
@@ -541,15 +629,15 @@ class BleBackgroundService {
       }
     });
 
-    service.on('reload_homescreen_widget').listen((event) async {
+    on('reload_homescreen_widget', (event) async {
       WidgetService.reloadVehicles();
     });
 
-    service.on('change_homescreen_widget_vehicle').listen((event) async {
+    on('change_homescreen_widget_vehicle', (event) async {
       WidgetService.changeVehicle();
     });
 
-    service.on('set_proximity_key').listen((event) async {
+    on('set_proximity_key', (event) async {
       if (event == null) return;
       bool enabled = event['enabled'];
       _proximityKeyEnabled = enabled;
@@ -577,7 +665,7 @@ class BleBackgroundService {
       }
     });
 
-    service.on('set_proximity_cooldown').listen((event) async {
+    on('set_proximity_cooldown', (event) async {
       if (event == null) return;
       double cooldown = event['cooldown'].toDouble();
       _proximityCooldown = cooldown;
@@ -591,13 +679,13 @@ class BleBackgroundService {
       }
     });
 
-    service.on('set_vibrate').listen((event) {
+    on('set_vibrate', (event) {
       if (event == null) return;
       bool enabled = event['enabled'];
       _vibrate = enabled;
     });
 
-    service.on('send_data').listen((event) async {
+    on('send_data', (event) async {
       for (final vehicle in vehicles) {
         if (!vehicle.device.isConnected) continue;
         await BleService.sendCommand(vehicle.device, ClientCommand.GET_DATA);
@@ -606,7 +694,7 @@ class BleBackgroundService {
       }
     });
 
-    service.on('set_dead_zone').listen((event) async {
+    on('set_dead_zone', (event) async {
       if (event == null) return;
       double deadZone = event['deadZone'].toDouble();
       _deadZone = deadZone;
@@ -620,7 +708,7 @@ class BleBackgroundService {
       }
     });
 
-    service.on('set_proximity_strength').listen((event) async {
+    on('set_proximity_strength', (event) async {
       if (event == null) return;
       double strength = event['strength'].toDouble();
       _proximityStrength = strength;
@@ -634,19 +722,19 @@ class BleBackgroundService {
       }
     });
 
-    service.on('reload_vehicles').listen((event) async {
+    on('reload_vehicles', (event) async {
       await VehicleStorage.reloadPrefs();
       BleService.reloadPrefs();
       _getVehicles();
     });
 
-    service.on('try_connect_all').listen((event) async {
+    on('try_connect_all', (event) async {
       for (final vehicle in vehicles) {
         await BleService.connectToDevice(vehicle.device);
       }
     });
 
-    service.on('send_command').listen((event) async {
+    on('send_command', (event) async {
       if (event == null) return;
 
       final String? correlationId = event['correlationId'];
@@ -681,13 +769,13 @@ class BleBackgroundService {
       }
     });
 
-    service.on('disconnect_device').listen((event) {
+    on('disconnect_device', (event) {
       if (event == null) return;
       BluetoothDevice device = BluetoothDevice.fromId(event['macAddress']);
       BleService.disconnectDevice(device);
     });
 
-    service.on('connect_to_device').listen((event) async {
+    on('connect_to_device', (event) async {
       final macAddress = event?['macAddress'];
       final requestId = event?['requestId'];
 
