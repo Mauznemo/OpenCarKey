@@ -38,7 +38,7 @@ class BleBackgroundService {
   // previous registration instead of stacking duplicate listeners on top.
   static StreamSubscription<OnConnectionStateChangedEvent>? _connectionStateSub;
   static final List<StreamSubscription<Map<String, dynamic>?>>
-      _serviceEventSubs = [];
+  _serviceEventSubs = [];
   static VoidCallback? _messageListener;
   static ServiceInstance? _serviceInstance;
   // MACs that have reached a real connected state, so we only log disconnects
@@ -149,6 +149,10 @@ class BleBackgroundService {
     );
 
     await BleDeviceStorageService.clearBleDevices();
+    // Keep the in-memory dedup set consistent with the just-cleared storage.
+    // Otherwise it can drift across a service restart, making _handleConnected
+    // wrongly early-return and skip BLE setup for a freshly reconnected device.
+    _connectedMacs.clear();
 
     _prefs = await SharedPreferences.getInstance();
     _proximityKeyEnabled = _prefs.getBool('proximityKey') ?? false;
@@ -168,10 +172,8 @@ class BleBackgroundService {
 
     _handleServiceEvents(service);
 
-    _connectionStateSub =
-        FlutterBluePlus.events.onConnectionStateChanged.listen(
-      _handleConnectionStateChanged,
-    );
+    _connectionStateSub = FlutterBluePlus.events.onConnectionStateChanged
+        .listen(_handleConnectionStateChanged);
 
     _messageListener = _handleMessageNotifier;
     _onMessageReceived.addListener(_messageListener!);
@@ -196,7 +198,28 @@ class BleBackgroundService {
     }
   }
 
-  static Future<void> _handleConnectionStateChanged(
+  // Per-device queue so connect/disconnect events for the same device are
+  // processed strictly in order and never interleave at await points. Without
+  // this, the stream fires the async handler without awaiting it, so a slow
+  // connect (service discovery + command round-trips) could still be running
+  // its final storage write when a disconnect is handled, re-marking the device
+  // connected after it was removed and leaving it stuck.
+  static final Map<String, Future<void>> _connStateQueues = {};
+
+  static void _handleConnectionStateChanged(
+    OnConnectionStateChangedEvent event,
+  ) {
+    final mac = event.device.remoteId.str;
+    final prev = _connStateQueues[mac] ?? Future.value();
+    _connStateQueues[mac] = prev
+        .then((_) => _processConnectionStateChanged(event))
+        .catchError(
+          (Object e) =>
+              debugPrint('Error processing connection state for $mac: $e'),
+        );
+  }
+
+  static Future<void> _processConnectionStateChanged(
     OnConnectionStateChangedEvent event,
   ) async {
     debugPrint('Connection state changed: ${event.connectionState}');
@@ -222,16 +245,39 @@ class BleBackgroundService {
 
     final bool ignoreProximityKey = changedVehicle.data.noProximityKey;
 
-    if (event.connectionState == BluetoothConnectionState.connected) {
-      await _handleConnected(event, changedVehicle, ignoreProximityKey);
-    } else if (event.connectionState ==
-        BluetoothConnectionState.disconnected) {
-      await _handleDisconnected(event, changedVehicle, ignoreProximityKey);
+    // The handlers own their side effects (notification, characteristic
+    // subscription, activity log, vibration). Any throw is contained so the
+    // authoritative storage reconcile + invoke + widget reload below always run.
+    try {
+      if (event.connectionState == BluetoothConnectionState.connected) {
+        await _handleConnected(event, changedVehicle, ignoreProximityKey);
+      } else if (event.connectionState ==
+          BluetoothConnectionState.disconnected) {
+        await _handleDisconnected(event, changedVehicle, ignoreProximityKey);
+      }
+    } catch (e) {
+      debugPrint('Error handling connection state change: $e');
+    }
+
+    // Reconcile the persisted connected_devices list (the single source of truth
+    // for the app UI and home-screen widget) from the *real* current connection
+    // state, so it can never be left stuck after a race or a handler failure.
+    final mac = event.device.remoteId.str;
+    final bool isConnected = event.device.isConnected;
+    if (isConnected) {
+      await BleDeviceStorageService.addDevice(mac);
+    } else {
+      await BleDeviceStorageService.removeDevice(mac);
+      _connectedMacs.remove(mac);
     }
 
     service?.invoke('connection_state_changed', {
-      'macAddress': event.device.remoteId.str,
-      'connectionState': event.connectionState.toString(),
+      'macAddress': mac,
+      'connectionState':
+          (isConnected
+                  ? BluetoothConnectionState.connected
+                  : BluetoothConnectionState.disconnected)
+              .toString(),
     });
 
     WidgetService.reloadConnectedDevices();
@@ -432,8 +478,6 @@ class BleBackgroundService {
     }
 
     ActivityService.instance.logConnectedToVehicle(vehicle.data);
-
-    await BleDeviceStorageService.addDevice(vehicle.device.remoteId.str);
   }
 
   static Future<void> _handleDisconnected(
@@ -452,13 +496,11 @@ class BleBackgroundService {
     // connected. autoConnect can emit a `disconnected` event for a device that
     // was never present (e.g. a vehicle added months ago and out of range),
     // which must not produce a notification or an activity log entry.
-    final bool wasConnected =
-        _connectedMacs.remove(event.device.remoteId.str);
+    final bool wasConnected = _connectedMacs.remove(event.device.remoteId.str);
     if (!wasConnected) {
       debugPrint(
         'Ignoring disconnect for ${event.device.remoteId.str} that was never connected',
       );
-      await BleDeviceStorageService.removeDevice(event.device.remoteId.str);
       return;
     }
 
@@ -487,8 +529,6 @@ class BleBackgroundService {
     }
 
     ActivityService.instance.logDisconnectedFromVehicle(vehicle.data);
-
-    await BleDeviceStorageService.removeDevice(vehicle.device.remoteId.str);
   }
 
   static Future<void> _handleMessage(
@@ -614,10 +654,7 @@ class BleBackgroundService {
   static void _handleServiceEvents(ServiceInstance service) {
     // Track every registration so a repeated onStart tears these down instead
     // of stacking a second set of handlers on top.
-    void on(
-      String method,
-      void Function(Map<String, dynamic>?) handler,
-    ) {
+    void on(String method, void Function(Map<String, dynamic>?) handler) {
       _serviceEventSubs.add(service.on(method).listen(handler));
     }
 
