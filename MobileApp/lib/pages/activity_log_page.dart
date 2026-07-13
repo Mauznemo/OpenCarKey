@@ -345,7 +345,7 @@ class _EmptyState extends StatelessWidget {
             ),
             child: Icon(
               Icons.history_rounded,
-              color: theme.colorScheme.onSecondaryContainer,
+              color: theme.colorScheme.secondaryContainer,
               size: 30,
             ),
           ),
