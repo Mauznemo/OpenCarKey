@@ -852,6 +852,10 @@ class BleBackgroundService {
         }
         break;
 
+      case 'widget_action':
+        await _handleWidgetAction(data['action'], data['macAddress']);
+        break;
+
       case 'send_command':
         {
           final String? correlationId = data['correlationId'];
@@ -931,6 +935,51 @@ class BleBackgroundService {
     }
   }
 
+  /// Handles a home-screen widget button press. Runs in the background task
+  /// isolate (where [WidgetService]'s connected-vehicle state is populated), so
+  /// the pending spinner and widget refresh use real state instead of wiping
+  /// the widget to "nothing connected". Mirrors the in-app button behavior.
+  static Future<void> _handleWidgetAction(
+    String action,
+    String macAddress,
+  ) async {
+    final device = BluetoothDevice.fromId(macAddress);
+    final vehicle = vehicles.firstWhereOrNull(
+      (v) => v.data.macAddress == macAddress,
+    );
+
+    switch (action) {
+      case 'lock':
+      case 'unlock':
+        // Spinner cleared by WidgetService.processMessage on the ESP's
+        // LOCKED/UNLOCKED confirmation (or the pending safety timeout).
+        WidgetService.setPending(macAddress, 'doors');
+        final command = action == 'lock'
+            ? ClientCommand.LOCK_DOORS
+            : ClientCommand.UNLOCK_DOORS;
+        await BleService.sendCommand(device, command);
+        ActivityService.instance.logFromCommand(command, vehicle?.data);
+        break;
+      case 'open_trunk':
+        // The trunk has no ESP state confirmation, so clear the spinner when the
+        // command write round-trip completes (or on the safety timeout).
+        WidgetService.setPending(macAddress, 'trunk');
+        try {
+          await BleService.sendCommand(device, ClientCommand.OPEN_TRUNK);
+          ActivityService.instance.logFromCommand(
+            ClientCommand.OPEN_TRUNK,
+            vehicle?.data,
+          );
+        } finally {
+          WidgetService.clearPending(macAddress, 'trunk');
+        }
+        break;
+      case 'start_engine':
+        //TODO: Implement engine start
+        break;
+    }
+  }
+
   //Functions to call from app/foreground
   static void reloadHomescreenWidget() {
     FlutterForegroundTask.sendDataToTask({'method': 'reload_homescreen_widget'});
@@ -939,6 +988,16 @@ class BleBackgroundService {
   static void changeHomescreenWidgetVehicle() {
     FlutterForegroundTask.sendDataToTask({
       'method': 'change_homescreen_widget_vehicle',
+    });
+  }
+
+  /// Forwards a home-screen widget button press to the background task isolate.
+  /// Called from home_widget's isolate (via [WidgetService.backgroundCallback]).
+  static void sendWidgetAction(String macAddress, String action) {
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'widget_action',
+      'action': action,
+      'macAddress': macAddress,
     });
   }
 

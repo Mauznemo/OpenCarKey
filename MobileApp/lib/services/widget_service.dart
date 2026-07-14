@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:home_widget/home_widget.dart';
 
-import '../types/ble_commands.dart';
+import '../types/ble_commands.dart' show Esp32Response;
 import '../models/ble_device.dart';
 import '../types/background_vehicle.dart';
 import '../types/features.dart';
@@ -46,6 +46,20 @@ class WidgetService {
 
   static bool _isPending(String macAddress, String action) =>
       _pendingActions[macAddress]?.contains(action) ?? false;
+
+  /// Marks a widget action pending (shows the button spinner) and refreshes the
+  /// widget. (ONLY call from the Background service isolate — that is the only
+  /// isolate where [connectedVehicles] is populated, so the widget doesn't get
+  /// wiped to the "nothing connected" state.)
+  static void setPending(String macAddress, String action) =>
+      _setPending(macAddress, action);
+
+  /// Clears a pending widget action and refreshes the widget. (ONLY call from
+  /// the Background service isolate.)
+  static void clearPending(String macAddress, String action) {
+    _clearPending(macAddress, action);
+    updateConnectedVehicle();
+  }
 
   /// Initializes the widget service. (ONLY call from Background service isolate)
   static Future<void> initialize({bool backgroundServiceEnabled = true}) async {
@@ -152,50 +166,37 @@ class WidgetService {
 
   @pragma('vm:entry-point')
   static void backgroundCallback(Uri? uri) {
-    if (uri != null) {
-      final actionType = uri.queryParameters['action_type'] ?? 'unknown_action';
-      final macAddress = uri.queryParameters['mac_address'] ?? 'unknown_mac';
+    if (uri == null) return;
 
-      if (actionType == 'change_vehicle') {
-        BleBackgroundService.changeHomescreenWidgetVehicle();
-        return;
-      }
+    final actionType = uri.queryParameters['action_type'] ?? 'unknown_action';
+    final macAddress = uri.queryParameters['mac_address'] ?? 'unknown_mac';
 
-      if (macAddress == 'unknown_mac') {
-        return;
-      }
+    if (actionType == 'change_vehicle') {
+      BleBackgroundService.changeHomescreenWidgetVehicle();
+      return;
+    }
 
-      print('Action type: $actionType');
+    if (macAddress == 'unknown_mac') {
+      return;
+    }
 
-      switch (actionType) {
-        case 'lock':
-        case 'unlock':
-          // Show the spinner until the ESP confirms the new lock state (cleared
-          // in processMessage) or the safety timeout fires.
-          _setPending(macAddress, 'doors');
-          BleBackgroundService.sendCommand(
-              BleDevice(macAddress: macAddress),
-              actionType == 'lock'
-                  ? ClientCommand.LOCK_DOORS
-                  : ClientCommand.UNLOCK_DOORS);
-          break;
-        case 'open_trunk':
-          // The trunk has no ESP state confirmation, so clear the spinner when
-          // the command write round-trip completes (or on the safety timeout).
-          _setPending(macAddress, 'trunk');
-          BleBackgroundService.sendCommand(
-                  BleDevice(macAddress: macAddress), ClientCommand.OPEN_TRUNK)
-              .whenComplete(() {
-            _clearPending(macAddress, 'trunk');
-            updateConnectedVehicle();
-          });
-          break;
-        case 'start_engine':
-          //TODO: Implement engine start
-          break;
-        default:
-          print('Unknown action type: $actionType');
-      }
+    print('Action type: $actionType');
+
+    // This callback runs in home_widget's own isolate, where WidgetService's
+    // connected-vehicle state is empty. Forward the action to the background
+    // task isolate (which owns that state) so it can drive the pending spinner,
+    // send the command and log it. Doing any of that here would call
+    // updateConnectedVehicle() with an empty connectedVehicles list, wiping the
+    // widget to the "nothing connected" state until the ESP confirmation lands.
+    switch (actionType) {
+      case 'lock':
+      case 'unlock':
+      case 'open_trunk':
+      case 'start_engine':
+        BleBackgroundService.sendWidgetAction(macAddress, actionType);
+        break;
+      default:
+        print('Unknown action type: $actionType');
     }
   }
 
