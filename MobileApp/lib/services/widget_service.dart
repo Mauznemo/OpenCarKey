@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:home_widget/home_widget.dart';
 
 import '../types/ble_commands.dart';
@@ -14,7 +13,6 @@ import 'vehicle_service.dart';
 
 @pragma('vm:entry-point')
 class WidgetService {
-  static FlutterBackgroundService service = FlutterBackgroundService();
   static List<Vehicle> vehicles = [];
   static List<Vehicle> connectedVehicles = [];
   static int selectedVehicleIndex = 0;

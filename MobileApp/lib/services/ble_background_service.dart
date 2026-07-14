@@ -5,10 +5,9 @@ import 'dart:ui';
 import 'package:collection/collection.dart';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
@@ -23,6 +22,39 @@ import '../utils/esp32_response_parser.dart';
 import 'vehicle_service.dart';
 import 'widget_service.dart';
 
+/// Entry point for the foreground task isolate. Must be a top-level function
+/// annotated with `@pragma('vm:entry-point')` so it survives tree-shaking and
+/// can be looked up by the native side when the service (re)starts.
+@pragma('vm:entry-point')
+void startCallback() {
+  FlutterForegroundTask.setTaskHandler(BleTaskHandler());
+}
+
+/// Bridges the `flutter_foreground_task` lifecycle to the static
+/// [BleBackgroundService] logic that owns all BLE traffic in this isolate.
+class BleTaskHandler extends TaskHandler {
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    await BleBackgroundService.onStart();
+  }
+
+  // eventAction is ForegroundTaskEventAction.nothing(), so this never fires.
+  @override
+  void onRepeatEvent(DateTime timestamp) {}
+
+  @override
+  void onReceiveData(Object data) {
+    if (data is Map) {
+      BleBackgroundService.handleTaskData(Map<String, dynamic>.from(data));
+    }
+  }
+
+  @override
+  Future<void> onDestroy(DateTime timestamp) async {
+    await BleBackgroundService._teardownListeners();
+  }
+}
+
 @pragma('vm:entry-point')
 class BleBackgroundService {
   // ignore: constant_identifier_names
@@ -34,13 +66,10 @@ class BleBackgroundService {
   static final Map<String, StreamSubscription> _subscriptions = {};
 
   // Top-level listeners registered in [onStart]. Tracked so repeated onStart
-  // invocations (iOS foreground transitions, service restarts) tear down the
-  // previous registration instead of stacking duplicate listeners on top.
+  // invocations (service restarts) tear down the previous registration instead
+  // of stacking duplicate listeners on top.
   static StreamSubscription<OnConnectionStateChangedEvent>? _connectionStateSub;
-  static final List<StreamSubscription<Map<String, dynamic>?>>
-  _serviceEventSubs = [];
   static VoidCallback? _messageListener;
-  static ServiceInstance? _serviceInstance;
   // MACs that have reached a real connected state, so we only log disconnects
   // for devices that were actually connected (not autoConnect phantoms).
   static final Set<String> _connectedMacs = {};
@@ -51,7 +80,6 @@ class BleBackgroundService {
   // whose notifications never work can't get stuck in a disconnect/reconnect
   // loop. Cleared as soon as a notification actually arrives.
   static final Set<String> _autoReconnectAttempted = {};
-  static final FlutterBackgroundService _service = FlutterBackgroundService();
   static late SharedPreferences _prefs;
   static bool _proximityKeyEnabled = false;
   static double _proximityStrength = 100;
@@ -69,79 +97,52 @@ class BleBackgroundService {
   static Future<void> initializeService({
     required bool backgroundServiceEnabled,
   }) async {
-    await Permission.notification.request();
-
     final isolate = Isolate.current;
     debugPrint(
       'Starting BG service from isolate: ${isolate.debugName ?? 'unnamed'} - ${isolate.hashCode}',
     );
 
-    final service = FlutterBackgroundService();
-
-    // Configure local notifications
-    // For Android notification channel
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'background_service', // id
-      'Background Service', // title
-      description: 'Background service for proximity key',
-      importance: Importance.low,
-      showBadge: false,
-    );
-
-    await _flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.createNotificationChannel(channel);
-
-    // Configure background service
-    await service.configure(
-      androidConfiguration: AndroidConfiguration(
-        // this will be executed when app is in foreground or background
-        onStart: onStart,
-        // auto start service
-        autoStart: true,
-        autoStartOnBoot: backgroundServiceEnabled,
-        isForegroundMode: true,
-        notificationChannelId: 'background_service',
-        initialNotificationTitle: 'Initializing',
-        initialNotificationContent: 'Initializing BLE Service...',
-        foregroundServiceNotificationId: 888,
+    // Configure the foreground task. The notification channel is created by the
+    // plugin from these options (reusing the existing 'background_service' id).
+    // allowWakeLock: false is the whole point of this migration — it lets the
+    // CPU deep-sleep while the service is idle instead of holding a permanent
+    // partial wakelock like flutter_background_service did.
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'background_service',
+        channelName: 'Background Service',
+        channelDescription: 'Background service for proximity key',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        showBadge: false,
+        onlyAlertOnce: true,
       ),
-      iosConfiguration: IosConfiguration(
-        autoStart: false,
-        // this will be executed when app is in foreground or background
-        onForeground: onStart,
-        // you have to enable background fetch capability on xcode project
-        onBackground: backgroundServiceEnabled ? onIosBackground : null,
+      iosNotificationOptions: const IOSNotificationOptions(),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.nothing(),
+        autoRunOnBoot: backgroundServiceEnabled,
+        autoRunOnMyPackageReplaced: true,
+        allowWakeLock: false,
+        allowWifiLock: false,
       ),
     );
 
-    if (!await service.isRunning()) {
-      await service.startService();
+    if (!await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.startService(
+        serviceId: 888,
+        notificationTitle: 'Initializing',
+        notificationText: 'Initializing BLE Service...',
+        callback: startCallback,
+      );
     } else {
       debugPrint('Service is already running, not starting again!');
     }
   }
 
-  // This is the background isolate function
+  // This runs in the background isolate (from [BleTaskHandler.onStart]).
   @pragma('vm:entry-point')
-  static void onStart(ServiceInstance service) async {
+  static Future<void> onStart() async {
     DartPluginRegistrant.ensureInitialized();
-
-    if (service is AndroidServiceInstance) {
-      service.on('setAsForeground').listen((event) {
-        service.setAsForegroundService();
-      });
-
-      service.on('setAsBackground').listen((event) {
-        service.setAsBackgroundService();
-      });
-
-      service.on('stopService').listen((event) {
-        service.stopSelf();
-      });
-    }
 
     debugPrint('Background service started...');
 
@@ -173,13 +174,10 @@ class BleBackgroundService {
 
     WidgetService.initialize(backgroundServiceEnabled: backgroundService);
 
-    // onStart can run multiple times within the same isolate (iOS foreground
-    // transitions, service restarts). Tear down the previous registration first
-    // so listeners don't stack up and fire an event once per past invocation.
-    _serviceInstance = service;
+    // onStart can run again within the same isolate on a service restart. Tear
+    // down the previous registration first so listeners don't stack up and fire
+    // an event once per past invocation.
     await _teardownListeners();
-
-    _handleServiceEvents(service);
 
     _connectionStateSub = FlutterBluePlus.events.onConnectionStateChanged
         .listen(_handleConnectionStateChanged);
@@ -195,11 +193,6 @@ class BleBackgroundService {
   static Future<void> _teardownListeners() async {
     await _connectionStateSub?.cancel();
     _connectionStateSub = null;
-
-    for (final sub in _serviceEventSubs) {
-      await sub.cancel();
-    }
-    _serviceEventSubs.clear();
 
     if (_messageListener != null) {
       _onMessageReceived.removeListener(_messageListener!);
@@ -232,8 +225,6 @@ class BleBackgroundService {
     OnConnectionStateChangedEvent event,
   ) async {
     debugPrint('Connection state changed: ${event.connectionState}');
-
-    final service = _serviceInstance;
 
     BackgroundVehicle? changedVehicle = _getChangedVehicle(
       event.device.remoteId.str,
@@ -280,7 +271,8 @@ class BleBackgroundService {
       _connectedMacs.remove(mac);
     }
 
-    service?.invoke('connection_state_changed', {
+    FlutterForegroundTask.sendDataToMain({
+      'event': 'connection_state_changed',
       'macAddress': mac,
       'connectionState':
           (isConnected
@@ -296,32 +288,20 @@ class BleBackgroundService {
     final espResponseData = _onMessageReceived.value;
     if (espResponseData == null) return;
 
-    final service = _serviceInstance;
-
     debugPrint('Message received: ${espResponseData.command}');
 
-    if (service != null) {
-      _handleMessage(espResponseData, service);
+    _handleMessage(espResponseData);
 
-      service.invoke('command_received', {
-        'macAddress': espResponseData.macAddress,
-        'data': espResponseData.parser.value,
-      });
-    }
+    FlutterForegroundTask.sendDataToMain({
+      'event': 'command_received',
+      'macAddress': espResponseData.macAddress,
+      'data': espResponseData.parser.value,
+    });
 
     WidgetService.processMessage(
       espResponseData.macAddress,
       espResponseData.command,
     );
-  }
-
-  // iOS background handler
-  @pragma('vm:entry-point')
-  static Future<bool> onIosBackground(ServiceInstance service) async {
-    WidgetsFlutterBinding.ensureInitialized();
-    DartPluginRegistrant.ensureInitialized();
-
-    return true;
   }
 
   static BackgroundVehicle? _getChangedVehicle(String macAddress) {
@@ -359,18 +339,11 @@ class BleBackgroundService {
   }
 
   static void _updateNotification(String title, String message) {
-    _flutterLocalNotificationsPlugin.show(
-      888,
-      title,
-      message,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'background_service',
-          'Background service for BLE auto connect',
-          icon: 'ic_launcher_foreground',
-          ongoing: true,
-        ),
-      ),
+    // The plugin owns the foreground-service notification (id 888). Fire and
+    // forget — updateService is a no-op if the service isn't running yet.
+    FlutterForegroundTask.updateService(
+      notificationTitle: title,
+      notificationText: message,
     );
   }
 
@@ -638,10 +611,7 @@ class BleBackgroundService {
     ActivityService.instance.logDisconnectedFromVehicle(vehicle.data);
   }
 
-  static Future<void> _handleMessage(
-    Esp32ResponseDate espResponseData,
-    ServiceInstance service,
-  ) async {
+  static Future<void> _handleMessage(Esp32ResponseDate espResponseData) async {
     if (espResponseData.command == Esp32Response.VERSION) {
       await _prefs.reload();
       final ignoreProtocolMismatch =
@@ -696,7 +666,8 @@ class BleBackgroundService {
         final data = changedVehicle.data;
         await VehicleStorage.updateVehicle(data.copyWith(features: features));
 
-        service.invoke('reload_vehicle_data', {
+        FlutterForegroundTask.sendDataToMain({
+          'event': 'reload_vehicle_data',
           'macAddress': espResponseData.macAddress,
         });
 
@@ -758,210 +729,226 @@ class BleBackgroundService {
   }
 
   //---------- Code for handling function calls from the frontend ----------
-  static void _handleServiceEvents(ServiceInstance service) {
-    // Track every registration so a repeated onStart tears these down instead
-    // of stacking a second set of handlers on top.
-    void on(String method, void Function(Map<String, dynamic>?) handler) {
-      _serviceEventSubs.add(service.on(method).listen(handler));
-    }
+  // Dispatches messages sent from the UI/widget via
+  // [FlutterForegroundTask.sendDataToTask]. flutter_foreground_task has no
+  // named-event channel, so every message carries a 'method' discriminator and
+  // we switch on it here (replaces the old service.on('method') registrations).
+  static Future<void> handleTaskData(Map<String, dynamic> data) async {
+    final method = data['method'];
 
-    on('handle_app_detached', (event) async {
-      bool backgroundService = _prefs.getBool('backgroundService') ?? true;
-      if (!backgroundService) {
-        service.stopSelf();
+    switch (method) {
+      case 'stopService':
+        await FlutterForegroundTask.stopService();
         debugPrint('Background service stopped...');
-      }
-    });
+        break;
 
-    on('reload_homescreen_widget', (event) async {
-      WidgetService.reloadVehicles();
-    });
+      case 'handle_app_detached':
+        bool backgroundService = _prefs.getBool('backgroundService') ?? true;
+        if (!backgroundService) {
+          await FlutterForegroundTask.stopService();
+          debugPrint('Background service stopped...');
+        }
+        break;
 
-    on('change_homescreen_widget_vehicle', (event) async {
-      WidgetService.changeVehicle();
-    });
+      case 'reload_homescreen_widget':
+        WidgetService.reloadVehicles();
+        break;
 
-    on('set_proximity_key', (event) async {
-      if (event == null) return;
-      bool enabled = event['enabled'];
-      _proximityKeyEnabled = enabled;
+      case 'change_homescreen_widget_vehicle':
+        WidgetService.changeVehicle();
+        break;
 
-      ClientCommand command = enabled
-          ? ClientCommand.PROXIMITY_KEY_ON
-          : ClientCommand.PROXIMITY_KEY_OFF;
-      for (final vehicle in vehicles) {
-        if (!vehicle.device.isConnected) continue;
-        await BleService.sendCommand(vehicle.device, command);
-        if (enabled) {
+      case 'set_proximity_key':
+        bool enabled = data['enabled'];
+        _proximityKeyEnabled = enabled;
+
+        ClientCommand command = enabled
+            ? ClientCommand.PROXIMITY_KEY_ON
+            : ClientCommand.PROXIMITY_KEY_OFF;
+        for (final vehicle in vehicles) {
+          if (!vehicle.device.isConnected) continue;
+          await BleService.sendCommand(vehicle.device, command);
+          if (enabled) {
+            await Future.delayed(Duration(milliseconds: 200));
+            await BleService.sendCommandWithFloats(
+              vehicle.device,
+              ClientCommand.RSSI_TRIGGER,
+              [_proximityStrength, _deadZone],
+            );
+            await Future.delayed(Duration(milliseconds: 200));
+            await BleService.sendCommandWithFloat(
+              vehicle.device,
+              ClientCommand.PROXIMITY_COOLDOWN,
+              _proximityCooldown,
+            );
+          }
+        }
+        break;
+
+      case 'set_proximity_cooldown':
+        double cooldown = data['cooldown'].toDouble();
+        _proximityCooldown = cooldown;
+        for (final vehicle in vehicles) {
+          if (!vehicle.device.isConnected) continue;
+          await BleService.sendCommandWithFloat(
+            vehicle.device,
+            ClientCommand.PROXIMITY_COOLDOWN,
+            cooldown,
+          );
+        }
+        break;
+
+      case 'set_vibrate':
+        _vibrate = data['enabled'];
+        break;
+
+      case 'send_data':
+        for (final vehicle in vehicles) {
+          if (!vehicle.device.isConnected) continue;
+          await BleService.sendCommand(vehicle.device, ClientCommand.GET_DATA);
           await Future.delayed(Duration(milliseconds: 200));
+          await BleService.sendCommand(
+            vehicle.device,
+            ClientCommand.GET_VERSION,
+          );
+        }
+        break;
+
+      case 'set_dead_zone':
+        double deadZone = data['deadZone'].toDouble();
+        _deadZone = deadZone;
+        for (final vehicle in vehicles) {
+          if (!vehicle.device.isConnected) continue;
+          await BleService.sendCommandWithFloats(
+            vehicle.device,
+            ClientCommand.RSSI_TRIGGER,
+            [_proximityStrength, deadZone],
+          );
+        }
+        break;
+
+      case 'set_proximity_strength':
+        double strength = data['strength'].toDouble();
+        _proximityStrength = strength;
+        for (final vehicle in vehicles) {
+          if (!vehicle.device.isConnected) continue;
           await BleService.sendCommandWithFloats(
             vehicle.device,
             ClientCommand.RSSI_TRIGGER,
             [_proximityStrength, _deadZone],
           );
-          await Future.delayed(Duration(milliseconds: 200));
-          await BleService.sendCommandWithFloat(
-            vehicle.device,
-            ClientCommand.PROXIMITY_COOLDOWN,
-            _proximityCooldown,
-          );
         }
-      }
-    });
+        break;
 
-    on('set_proximity_cooldown', (event) async {
-      if (event == null) return;
-      double cooldown = event['cooldown'].toDouble();
-      _proximityCooldown = cooldown;
-      for (final vehicle in vehicles) {
-        if (!vehicle.device.isConnected) continue;
-        await BleService.sendCommandWithFloat(
-          vehicle.device,
-          ClientCommand.PROXIMITY_COOLDOWN,
-          cooldown,
-        );
-      }
-    });
+      case 'reload_vehicles':
+        await VehicleStorage.reloadPrefs();
+        BleService.reloadPrefs();
+        _getVehicles();
+        break;
 
-    on('set_vibrate', (event) {
-      if (event == null) return;
-      bool enabled = event['enabled'];
-      _vibrate = enabled;
-    });
+      case 'try_connect_all':
+        for (final vehicle in vehicles) {
+          await BleService.connectToDevice(vehicle.device);
+        }
+        break;
 
-    on('send_data', (event) async {
-      for (final vehicle in vehicles) {
-        if (!vehicle.device.isConnected) continue;
-        await BleService.sendCommand(vehicle.device, ClientCommand.GET_DATA);
-        await Future.delayed(Duration(milliseconds: 200));
-        await BleService.sendCommand(vehicle.device, ClientCommand.GET_VERSION);
-      }
-    });
+      case 'send_command':
+        {
+          final String? correlationId = data['correlationId'];
+          BluetoothDevice device = BluetoothDevice.fromId(data['macAddress']);
+          ClientCommand? command = ClientCommand.fromValue(data['command']);
+          final rawData = data['additionalData'];
+          Uint8List? additionalData = rawData == null
+              ? null
+              : Uint8List.fromList(List<int>.from(rawData));
 
-    on('set_dead_zone', (event) async {
-      if (event == null) return;
-      double deadZone = event['deadZone'].toDouble();
-      _deadZone = deadZone;
-      for (final vehicle in vehicles) {
-        if (!vehicle.device.isConnected) continue;
-        await BleService.sendCommandWithFloats(
-          vehicle.device,
-          ClientCommand.RSSI_TRIGGER,
-          [_proximityStrength, deadZone],
-        );
-      }
-    });
+          if (command == null) return;
 
-    on('set_proximity_strength', (event) async {
-      if (event == null) return;
-      double strength = event['strength'].toDouble();
-      _proximityStrength = strength;
-      for (final vehicle in vehicles) {
-        if (!vehicle.device.isConnected) continue;
-        await BleService.sendCommandWithFloats(
-          vehicle.device,
-          ClientCommand.RSSI_TRIGGER,
-          [_proximityStrength, _deadZone],
-        );
-      }
-    });
+          try {
+            await BleService.sendCommand(
+              device,
+              command,
+              additionalData: additionalData,
+            );
 
-    on('reload_vehicles', (event) async {
-      await VehicleStorage.reloadPrefs();
-      BleService.reloadPrefs();
-      _getVehicles();
-    });
+            final vehicle = vehicles.firstWhereOrNull(
+              (v) => v.data.macAddress == device.remoteId.str,
+            );
+            ActivityService.instance.logFromCommand(command, vehicle?.data);
 
-    on('try_connect_all', (event) async {
-      for (final vehicle in vehicles) {
-        await BleService.connectToDevice(vehicle.device);
-      }
-    });
+            FlutterForegroundTask.sendDataToMain({
+              'event': 'send_command_result',
+              'correlationId': correlationId,
+              'success': true,
+            });
+          } catch (e) {
+            FlutterForegroundTask.sendDataToMain({
+              'event': 'send_command_result',
+              'correlationId': correlationId,
+              'success': false,
+              'error': e.toString(),
+            });
+          }
+        }
+        break;
 
-    on('send_command', (event) async {
-      if (event == null) return;
+      case 'disconnect_device':
+        {
+          BluetoothDevice device = BluetoothDevice.fromId(data['macAddress']);
+          BleService.disconnectDevice(device);
+        }
+        break;
 
-      final String? correlationId = event['correlationId'];
-      BluetoothDevice device = BluetoothDevice.fromId(event['macAddress']);
-      ClientCommand? command = ClientCommand.fromValue(event['command']);
-      Uint8List? additionalData = event['additionalData'];
+      case 'connect_to_device':
+        {
+          final macAddress = data['macAddress'];
+          final requestId = data['requestId'];
 
-      if (command == null) return;
+          if (macAddress == null || requestId == null) {
+            return;
+          }
 
-      try {
-        await BleService.sendCommand(
-          device,
-          command,
-          additionalData: additionalData,
-        );
+          try {
+            final bluetoothDevice = await BleService.connectToDevice(
+              BluetoothDevice.fromId(macAddress),
+            );
 
-        final vehicle = vehicles.firstWhereOrNull(
-          (v) => v.data.macAddress == device.remoteId.str,
-        );
-        ActivityService.instance.logFromCommand(command, vehicle?.data);
-
-        service.invoke('send_command_result', {
-          'correlationId': correlationId,
-          'success': true,
-        });
-      } catch (e) {
-        service.invoke('send_command_result', {
-          'correlationId': correlationId,
-          'success': false,
-          'error': e.toString(),
-        });
-      }
-    });
-
-    on('disconnect_device', (event) {
-      if (event == null) return;
-      BluetoothDevice device = BluetoothDevice.fromId(event['macAddress']);
-      BleService.disconnectDevice(device);
-    });
-
-    on('connect_to_device', (event) async {
-      final macAddress = event?['macAddress'];
-      final requestId = event?['requestId'];
-
-      if (macAddress == null || requestId == null) {
-        return;
-      }
-
-      try {
-        final bluetoothDevice = await BleService.connectToDevice(
-          BluetoothDevice.fromId(macAddress),
-        );
-
-        // Send the result back
-        service.invoke('connect_result', {
-          'requestId': requestId,
-          'macAddress': bluetoothDevice?.remoteId.str,
-        });
-      } catch (e) {
-        service.invoke('connect_result', {
-          'requestId': requestId,
-          'error': e.toString(),
-        });
-      }
-    });
+            // Send the result back
+            FlutterForegroundTask.sendDataToMain({
+              'event': 'connect_result',
+              'requestId': requestId,
+              'macAddress': bluetoothDevice?.remoteId.str,
+            });
+          } catch (e) {
+            FlutterForegroundTask.sendDataToMain({
+              'event': 'connect_result',
+              'requestId': requestId,
+              'error': e.toString(),
+            });
+          }
+        }
+        break;
+    }
   }
 
   //Functions to call from app/foreground
   static void reloadHomescreenWidget() {
-    _service.invoke('reload_homescreen_widget');
+    FlutterForegroundTask.sendDataToTask({'method': 'reload_homescreen_widget'});
   }
 
   static void changeHomescreenWidgetVehicle() {
-    _service.invoke('change_homescreen_widget_vehicle');
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'change_homescreen_widget_vehicle',
+    });
   }
 
   static void handleAppDetached() {
-    _service.invoke('handle_app_detached');
+    FlutterForegroundTask.sendDataToTask({'method': 'handle_app_detached'});
   }
 
   static Future<void> disableBackgroundService() async {
-    if (await _service.isRunning()) {
-      _service.invoke('stopService');
+    if (await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.stopService();
     }
 
     await Future.delayed(Duration(seconds: 5));
@@ -970,8 +957,8 @@ class BleBackgroundService {
   }
 
   static Future<void> enableBackgroundService() async {
-    if (await _service.isRunning()) {
-      _service.invoke('stopService');
+    if (await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.stopService();
     }
 
     await Future.delayed(Duration(seconds: 5));
@@ -989,20 +976,26 @@ class BleBackgroundService {
 
     final completer = Completer<BleDevice>();
 
-    late StreamSubscription<Map<String, dynamic>?> sub;
-    sub = _service.on('connect_result').listen((response) {
-      if (response != null && response['requestId'] == requestId) {
-        if (response.containsKey('error')) {
-          completer.completeError(response['error']);
-        } else {
-          completer.complete(BleDevice(macAddress: response['macAddress']));
-        }
-        sub.cancel();
+    late void Function(Object) callback;
+    callback = (responseData) {
+      if (responseData is! Map) return;
+      if (responseData['event'] != 'connect_result') return;
+      if (responseData['requestId'] != requestId) return;
+
+      FlutterForegroundTask.removeTaskDataCallback(callback);
+      if (completer.isCompleted) return;
+
+      if (responseData.containsKey('error')) {
+        completer.completeError(responseData['error']);
+      } else {
+        completer.complete(BleDevice(macAddress: responseData['macAddress']));
       }
-    });
+    };
+    FlutterForegroundTask.addTaskDataCallback(callback);
 
     // Send the request with the request ID
-    _service.invoke('connect_to_device', {
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'connect_to_device',
       'macAddress': device.remoteId.str,
       'requestId': requestId,
     });
@@ -1011,47 +1004,66 @@ class BleBackgroundService {
     Timer(Duration(seconds: 30), () {
       if (!completer.isCompleted) {
         completer.completeError('Connection timeout');
-        sub.cancel();
       }
     });
 
-    return completer.future;
+    return completer.future.whenComplete(
+      () => FlutterForegroundTask.removeTaskDataCallback(callback),
+    );
   }
 
   static void requestData() {
-    _service.invoke('send_data', {});
+    FlutterForegroundTask.sendDataToTask({'method': 'send_data'});
   }
 
   static void setProximityCooldown(double cooldown) {
-    _service.invoke('set_proximity_cooldown', {'cooldown': cooldown});
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'set_proximity_cooldown',
+      'cooldown': cooldown,
+    });
   }
 
   static void setVibrate(bool enabled) {
-    _service.invoke('set_vibrate', {'enabled': enabled});
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'set_vibrate',
+      'enabled': enabled,
+    });
   }
 
   static void setDeadZone(double deadZone) {
-    _service.invoke('set_dead_zone', {'deadZone': deadZone});
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'set_dead_zone',
+      'deadZone': deadZone,
+    });
   }
 
   static void setProximityKey(bool enabled) {
-    _service.invoke('set_proximity_key', {'enabled': enabled});
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'set_proximity_key',
+      'enabled': enabled,
+    });
   }
 
   static void setProximityStrength(double strength) {
-    _service.invoke('set_proximity_strength', {'strength': strength});
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'set_proximity_strength',
+      'strength': strength,
+    });
   }
 
   static void reloadVehicles() {
-    _service.invoke('reload_vehicles', {});
+    FlutterForegroundTask.sendDataToTask({'method': 'reload_vehicles'});
   }
 
   static void tryConnectAll() {
-    _service.invoke('try_connect_all', {});
+    FlutterForegroundTask.sendDataToTask({'method': 'try_connect_all'});
   }
 
   static void disconnectDevice(BleDevice device) {
-    _service.invoke('disconnect_device', {'macAddress': device.macAddress});
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'disconnect_device',
+      'macAddress': device.macAddress,
+    });
   }
 
   /// Send a command to a device.
@@ -1073,29 +1085,41 @@ class BleBackgroundService {
     });
 
     // Listen for the matching result
-    late StreamSubscription<Map<String, dynamic>?> sub;
-    sub = FlutterBackgroundService().on('send_command_result').listen((event) {
-      if (event == null) return;
-      if (event['correlationId'] != correlationId) return; // Not our response
+    late void Function(Object) callback;
+    callback = (responseData) {
+      if (responseData is! Map) return;
+      if (responseData['event'] != 'send_command_result') return;
+      if (responseData['correlationId'] != correlationId) return; // Not ours
 
-      sub.cancel();
+      FlutterForegroundTask.removeTaskDataCallback(callback);
       timeout.cancel();
 
-      if (event['success'] == true) {
-        Future.delayed(Duration(milliseconds: 100), () => completer.complete());
+      if (completer.isCompleted) return;
+
+      if (responseData['success'] == true) {
+        Future.delayed(Duration(milliseconds: 100), () {
+          if (!completer.isCompleted) completer.complete();
+        });
       } else {
-        completer.completeError(Exception(event['error'] ?? 'Unknown error'));
+        completer.completeError(
+          Exception(responseData['error'] ?? 'Unknown error'),
+        );
       }
-    });
+    };
+    FlutterForegroundTask.addTaskDataCallback(callback);
 
     // Send the command
-    _service.invoke('send_command', {
+    FlutterForegroundTask.sendDataToTask({
+      'method': 'send_command',
       'correlationId': correlationId,
       'macAddress': device.macAddress,
       'command': command.value,
-      'additionalData': additionalData,
+      'additionalData': additionalData?.toList(),
     });
 
-    return completer.future;
+    return completer.future.whenComplete(() {
+      timeout.cancel();
+      FlutterForegroundTask.removeTaskDataCallback(callback);
+    });
   }
 }

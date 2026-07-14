@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../components/custom_dropdown_button.dart';
@@ -22,11 +22,9 @@ class RangeCalibrationPage extends ConsumerStatefulWidget {
 }
 
 class _RangeCalibrationPageState extends ConsumerState<RangeCalibrationPage> {
-  final FlutterBackgroundService service = FlutterBackgroundService();
-
   Vehicle? selectedVehicle;
   late Timer timer;
-  late StreamSubscription<Map<String, dynamic>?> sub;
+  late void Function(Object) _taskDataCallback;
 
   double triggerStrength = -200;
 
@@ -44,30 +42,32 @@ class _RangeCalibrationPageState extends ConsumerState<RangeCalibrationPage> {
       readSignalStrength();
     });
 
-    sub = service.on('command_received').listen((event) {
-      if (event != null) {
-        Esp32ResponseParser parser =
-            Esp32ResponseParser(List<int>.from(event['data']));
-        Esp32Response? command = Esp32Response.fromValue(parser.command);
-        if (command == null) {
-          return;
-        }
-        Esp32ResponseDate data = Esp32ResponseDate(
-            macAddress: event['macAddress'], command: command, parser: parser);
+    _taskDataCallback = (event) {
+      if (event is! Map) return;
+      if (event['event'] != 'command_received') return;
 
-        if (data.command == Esp32Response.RSSI) {
-          setState(() {
-            triggerStrength = data.parser.getFloat() ?? -200;
-          });
-        }
+      Esp32ResponseParser parser =
+          Esp32ResponseParser(List<int>.from(event['data']));
+      Esp32Response? command = Esp32Response.fromValue(parser.command);
+      if (command == null) {
+        return;
       }
-    });
+      Esp32ResponseDate data = Esp32ResponseDate(
+          macAddress: event['macAddress'], command: command, parser: parser);
+
+      if (data.command == Esp32Response.RSSI) {
+        setState(() {
+          triggerStrength = data.parser.getFloat() ?? -200;
+        });
+      }
+    };
+    FlutterForegroundTask.addTaskDataCallback(_taskDataCallback);
   }
 
   @override
   void dispose() {
     timer.cancel();
-    sub.cancel();
+    FlutterForegroundTask.removeTaskDataCallback(_taskDataCallback);
     super.dispose();
   }
 

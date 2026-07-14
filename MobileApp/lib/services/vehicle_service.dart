@@ -1,8 +1,7 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,7 +16,6 @@ import '../types/vehicle_data.dart';
 import '../utils/esp32_response_parser.dart';
 import 'ble_background_service.dart';
 import 'ble_service.dart';
-import 'settings_service.dart';
 
 class VehicleService {
   VehicleService._();
@@ -28,51 +26,48 @@ class VehicleService {
   late BuildContext context;
   late WidgetRef ref;
 
-  final FlutterBackgroundService service = FlutterBackgroundService();
-
-  StreamSubscription<Map<String, dynamic>?>? commandStream;
-  StreamSubscription<Map<String, dynamic>?>? connectionStateStream;
-  StreamSubscription<Map<String, dynamic>?>? reloadStream;
+  // Receives data the background isolate sends via
+  // FlutterForegroundTask.sendDataToMain. Dispatched on the 'event' field.
+  void Function(Object)? _taskDataCallback;
 
   void init(BuildContext context, WidgetRef ref) {
     this.context = context;
     this.ref = ref;
 
-    commandStream = service.on('command_received').listen((event) {
-      if (event != null) {
-        Esp32ResponseParser parser =
-            Esp32ResponseParser(List<int>.from(event['data']));
-        Esp32Response? command = Esp32Response.fromValue(parser.command);
-        if (command == null) {
-          return;
-        }
-        Esp32ResponseDate data = Esp32ResponseDate(
-            macAddress: event['macAddress'], command: command, parser: parser);
-        processMessage(data);
-      }
-    });
-    connectionStateStream =
-        service.on('connection_state_changed').listen((event) {
-      if (event != null) {
-        final macAddress = event['macAddress'];
-        final connectionState = event['connectionState'];
-        final isConnected =
-            connectionState == 'BluetoothConnectionState.connected';
+    _taskDataCallback = (data) {
+      if (data is! Map) return;
+      switch (data['event']) {
+        case 'command_received':
+          Esp32ResponseParser parser =
+              Esp32ResponseParser(List<int>.from(data['data']));
+          Esp32Response? command = Esp32Response.fromValue(parser.command);
+          if (command == null) {
+            return;
+          }
+          Esp32ResponseDate responseData = Esp32ResponseDate(
+              macAddress: data['macAddress'], command: command, parser: parser);
+          processMessage(responseData);
+          break;
+        case 'connection_state_changed':
+          final macAddress = data['macAddress'];
+          final connectionState = data['connectionState'];
+          final isConnected =
+              connectionState == 'BluetoothConnectionState.connected';
 
-        debugPrint(
-            '[VehicleService] Connection state changed for $macAddress: $isConnected');
+          debugPrint(
+              '[VehicleService] Connection state changed for $macAddress: $isConnected');
 
-        final vehiclesNotifier = ref.read(vehiclesProvider.notifier);
+          final vehiclesNotifier = ref.read(vehiclesProvider.notifier);
 
-        vehiclesNotifier.removeOutdatedVehicle(macAddress);
-        vehiclesNotifier.setVehicleConnected(macAddress, isConnected);
+          vehiclesNotifier.removeOutdatedVehicle(macAddress);
+          vehiclesNotifier.setVehicleConnected(macAddress, isConnected);
+          break;
+        case 'reload_vehicle_data':
+          reloadVehicleData(data['macAddress']);
+          break;
       }
-    });
-    reloadStream = service.on('reload_vehicle_data').listen((event) {
-      if (event != null) {
-        reloadVehicleData(event['macAddress']);
-      }
-    });
+    };
+    FlutterForegroundTask.addTaskDataCallback(_taskDataCallback!);
 
     getVehicles();
   }
@@ -270,9 +265,10 @@ class VehicleService {
   }
 
   void dispose() {
-    commandStream?.cancel();
-    connectionStateStream?.cancel();
-    reloadStream?.cancel();
+    if (_taskDataCallback != null) {
+      FlutterForegroundTask.removeTaskDataCallback(_taskDataCallback!);
+      _taskDataCallback = null;
+    }
     _instance = null;
   }
 }
