@@ -44,6 +44,13 @@ class BleBackgroundService {
   // MACs that have reached a real connected state, so we only log disconnects
   // for devices that were actually connected (not autoConnect phantoms).
   static final Set<String> _connectedMacs = {};
+  // MACs we disconnected on purpose to recover a dead notification pipe on the
+  // first connect (see _handleConnected). Reconnected from _handleDisconnected.
+  static final Set<String> _autoReconnectPending = {};
+  // MACs we've already force-reconnected once this connect session, so a device
+  // whose notifications never work can't get stuck in a disconnect/reconnect
+  // loop. Cleared as soon as a notification actually arrives.
+  static final Set<String> _autoReconnectAttempted = {};
   static final FlutterBackgroundService _service = FlutterBackgroundService();
   static late SharedPreferences _prefs;
   static bool _proximityKeyEnabled = false;
@@ -153,6 +160,8 @@ class BleBackgroundService {
     // Otherwise it can drift across a service restart, making _handleConnected
     // wrongly early-return and skip BLE setup for a freshly reconnected device.
     _connectedMacs.clear();
+    _autoReconnectPending.clear();
+    _autoReconnectAttempted.clear();
 
     _prefs = await SharedPreferences.getInstance();
     _proximityKeyEnabled = _prefs.getBool('proximityKey') ?? false;
@@ -404,10 +413,20 @@ class BleBackgroundService {
           characteristic.uuid == Guid('0000ffe1-0000-1000-8000-00805f9b34fb'),
     );
 
+    // Set true as soon as *any* notification is delivered on this connection.
+    // Proves the GATT notification pipe actually works; used below to detect the
+    // first-connect case where setNotifyValue silently fails to deliver.
+    bool gotResponse = false;
+
     await characteristic.setNotifyValue(true);
     final notificationSubscription = characteristic.onValueReceived.listen((
       value,
     ) {
+      // A packet arrived → notifications are flowing. Clear the one-shot
+      // auto-reconnect guard so a later genuine first-connect can self-heal too.
+      gotResponse = true;
+      _autoReconnectAttempted.remove(event.device.remoteId.str);
+
       if (value.isEmpty) {
         debugPrint('Received empty value from characteristic.');
         return;
@@ -478,6 +497,81 @@ class BleBackgroundService {
     }
 
     ActivityService.instance.logConnectedToVehicle(vehicle.data);
+
+    // On the very first connection the GATT notification subscription sometimes
+    // silently fails to deliver (Android GATT cache / autoConnect timing), so
+    // the GET_DATA response (and every later LOCKED/UNLOCKED) never arrives and
+    // the UI/widget stay stuck on the default lock state until a manual
+    // reconnect. Detect that here and self-heal: re-assert notifications and
+    // re-request the state a few times, then force one reconnect as a last
+    // resort — the same thing the user does by hand, which fixes it for good.
+    // Fire-and-forget: must not delay the connection_state_changed / widget
+    // reconcile that runs once this handler returns. The onValueReceived
+    // closure keeps [gotResponse] live, so the detached check still sees updates.
+    unawaited(_ensureNotificationsWorking(event, vehicle, () => gotResponse));
+  }
+
+  /// Verifies that BLE notifications are actually being delivered for a
+  /// freshly-connected [vehicle]; retries and, as a last resort, forces a single
+  /// disconnect+reconnect. [gotResponse] reports whether any packet has arrived.
+  static Future<void> _ensureNotificationsWorking(
+    OnConnectionStateChangedEvent event,
+    BackgroundVehicle vehicle,
+    bool Function() gotResponse,
+  ) async {
+    final mac = event.device.remoteId.str;
+    const int maxRetries = 3;
+
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      await Future.delayed(const Duration(milliseconds: 2500));
+      if (gotResponse()) return;
+      if (event.device.isDisconnected) return; // nothing to recover anymore
+
+      debugPrint(
+        'No notification from $mac after connect (attempt ${attempt + 1}/'
+        '$maxRetries) — re-asserting notifications and re-requesting GET_DATA',
+      );
+
+      final subscription = _subscriptions[mac];
+      // Re-assert the CCCD subscription; the characteristic handle is reused via
+      // the existing onValueReceived listener stored in _subscriptions.
+      try {
+        final services = await event.device.discoverServices();
+        final service = services.firstWhereOrNull(
+          (s) => s.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'),
+        );
+        final characteristic = service?.characteristics.firstWhereOrNull(
+          (c) => c.uuid == Guid('0000ffe1-0000-1000-8000-00805f9b34fb'),
+        );
+        if (subscription != null && characteristic != null) {
+          await characteristic.setNotifyValue(true);
+        }
+      } catch (e) {
+        debugPrint('Error re-asserting notifications for $mac: $e');
+      }
+
+      await BleService.sendCommand(vehicle.device, ClientCommand.GET_DATA);
+    }
+
+    // Give the last GET_DATA a moment before deciding to reconnect.
+    await Future.delayed(const Duration(milliseconds: 2500));
+    if (gotResponse() || event.device.isDisconnected) return;
+
+    if (_autoReconnectAttempted.add(mac)) {
+      debugPrint(
+        'Notifications still dead for $mac after retries — forcing one '
+        'reconnect to refresh the GATT connection',
+      );
+      _autoReconnectPending.add(mac);
+      // Disconnect here; _handleDisconnected reconnects when it sees the pending
+      // flag, so a fresh _handleConnected runs with a clean subscription.
+      await BleService.disconnectDevice(vehicle.device);
+    } else {
+      debugPrint(
+        'Already force-reconnected $mac once this session — not retrying again '
+        'to avoid a reconnect loop',
+      );
+    }
   }
 
   static Future<void> _handleDisconnected(
@@ -497,6 +591,19 @@ class BleBackgroundService {
     // was never present (e.g. a vehicle added months ago and out of range),
     // which must not produce a notification or an activity log entry.
     final bool wasConnected = _connectedMacs.remove(event.device.remoteId.str);
+
+    // If we disconnected on purpose to recover a dead notification pipe (see
+    // _ensureNotificationsWorking), reconnect right away and skip the
+    // user-facing disconnect notification/vibration/log — it isn't a real
+    // disconnect from the user's perspective.
+    if (_autoReconnectPending.remove(event.device.remoteId.str)) {
+      debugPrint(
+        'Reconnecting ${event.device.remoteId.str} to recover notifications',
+      );
+      await BleService.connectToDevice(vehicle.device);
+      return;
+    }
+
     if (!wasConnected) {
       debugPrint(
         'Ignoring disconnect for ${event.device.remoteId.str} that was never connected',

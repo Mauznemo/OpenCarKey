@@ -18,6 +18,7 @@ import androidx.glance.Image
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
+import androidx.glance.appwidget.CircularProgressIndicator
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.components.CircleIconButton
@@ -71,6 +72,8 @@ class HomescreenWidget : GlanceAppWidget() {
         var hasTrunkUnlock = false
         var isLocked = false
         var engineOn = false
+        var pendingDoors = false
+        var pendingTrunk = false
         var multipleConnectedDevices = false
 
         if (!backgroundServiceEnabled) {
@@ -104,6 +107,8 @@ class HomescreenWidget : GlanceAppWidget() {
                 hasTrunkUnlock = json.optBoolean("hasTrunkUnlock", false)
                 isLocked = json.optBoolean("isLocked", false)
                 engineOn = json.optBoolean("engineOn", false)
+                pendingDoors = json.optBoolean("pendingDoors", false)
+                pendingTrunk = json.optBoolean("pendingTrunk", false)
                 multipleConnectedDevices = json.optBoolean("multipleConnectedDevices", false)
             } catch (e: Exception) {
                 println("Error parsing JSON: ${e.message}")
@@ -158,22 +163,32 @@ class HomescreenWidget : GlanceAppWidget() {
                             .background(DynamicThemeColorProviders.primaryContainer)
                             .cornerRadius(25.dp)
                             .padding(all = 12.dp)
-                            .clickable(
-                                actionRunCallback<InteractiveAction>(
-                                    parameters = actionParametersOf(
-                                        ACTION_TYPE_KEY to if (isLocked) "unlock" else "lock",
-                                        MAC_ADDRESS_KEY to macAddress
+                            // Don't re-trigger the command while one is in flight.
+                            .let {
+                                if (pendingDoors) it else it.clickable(
+                                    actionRunCallback<InteractiveAction>(
+                                        parameters = actionParametersOf(
+                                            ACTION_TYPE_KEY to if (isLocked) "unlock" else "lock",
+                                            MAC_ADDRESS_KEY to macAddress
+                                        )
                                     )
                                 )
-                            ),
+                            },
                         contentAlignment = Alignment.Center
                     ) {
-                        Image(
-                            provider = ImageProvider(if (isLocked) R.drawable.lock_24px else R.drawable.lock_open_24px),
-                            contentDescription = if (isLocked) "Unlock" else "Lock",
-                            modifier = GlanceModifier.fillMaxSize(),
-                            colorFilter = ColorFilter.tint(DynamicThemeColorProviders.primary)
-                        )
+                        if (pendingDoors) {
+                            CircularProgressIndicator(
+                                modifier = GlanceModifier.fillMaxSize(),
+                                color = DynamicThemeColorProviders.primary
+                            )
+                        } else {
+                            Image(
+                                provider = ImageProvider(if (isLocked) R.drawable.lock_24px else R.drawable.lock_open_24px),
+                                contentDescription = if (isLocked) "Unlock" else "Lock",
+                                modifier = GlanceModifier.fillMaxSize(),
+                                colorFilter = ColorFilter.tint(DynamicThemeColorProviders.primary)
+                            )
+                        }
                     }
                     if (hasTrunkUnlock) {
                         Spacer(GlanceModifier.width(16.dp))
@@ -183,22 +198,32 @@ class HomescreenWidget : GlanceAppWidget() {
                                 .background(DynamicThemeColorProviders.primaryContainer)
                                 .cornerRadius(25.dp)
                                 .padding(all = 12.dp)
-                                .clickable(
-                                    actionRunCallback<InteractiveAction>(
-                                        parameters = actionParametersOf(
-                                            ACTION_TYPE_KEY to "open_trunk",
-                                            MAC_ADDRESS_KEY to macAddress
+                                // Don't re-trigger the command while one is in flight.
+                                .let {
+                                    if (pendingTrunk) it else it.clickable(
+                                        actionRunCallback<InteractiveAction>(
+                                            parameters = actionParametersOf(
+                                                ACTION_TYPE_KEY to "open_trunk",
+                                                MAC_ADDRESS_KEY to macAddress
+                                            )
                                         )
                                     )
-                                ),
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Image(
-                                provider = ImageProvider(R.drawable.directions_car_24px),
-                                contentDescription = "Open Trunk",
-                                modifier = GlanceModifier.fillMaxSize(),
-                                colorFilter = ColorFilter.tint(DynamicThemeColorProviders.primary)
-                            )
+                            if (pendingTrunk) {
+                                CircularProgressIndicator(
+                                    modifier = GlanceModifier.fillMaxSize(),
+                                    color = DynamicThemeColorProviders.primary
+                                )
+                            } else {
+                                Image(
+                                    provider = ImageProvider(R.drawable.directions_car_24px),
+                                    contentDescription = "Open Trunk",
+                                    modifier = GlanceModifier.fillMaxSize(),
+                                    colorFilter = ColorFilter.tint(DynamicThemeColorProviders.primary)
+                                )
+                            }
                         }
                     }
                     if (hasEngineStart) {
