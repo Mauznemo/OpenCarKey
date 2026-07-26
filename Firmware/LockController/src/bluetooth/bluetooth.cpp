@@ -40,6 +40,12 @@ bool autoLocking = false;
 
 bool oldDeviceConnected = false;
 
+// Delayed low-power connection parameter request. Armed in onConnect and fired
+// ~5s later from bluetoothLoop so it doesn't race Android's service discovery /
+// MTU exchange or slow the initial GET_VERSION/GET_FEATURES/GET_DATA burst.
+unsigned long connParamUpdateAt = 0;
+bool connParamsPending = false;
+
 const int bootButtonPin = 0;
 unsigned long bootButtonPressStart = 0;
 bool isBootButtonPressed = false;
@@ -198,6 +204,10 @@ class MyServerCallbacks : public BLEServerCallbacks
         memcpy(peerAddress, param->connect.remote_bda, sizeof(esp_bd_addr_t));
         deviceConnected = true;
 
+        // Request low-power connection parameters, but delayed (see bluetoothLoop).
+        connParamUpdateAt = millis() + 5000;
+        connParamsPending = true;
+
         if (onConnected)
             onConnected();
     };
@@ -207,6 +217,8 @@ class MyServerCallbacks : public BLEServerCallbacks
         if (DEBUG_MODE)
             Serial.println("Disconnected");
         deviceConnected = false;
+        // Cancel any pending conn-param update so it can't fire against a new peer.
+        connParamsPending = false;
         if (autoLocking && !isLocked) // Only true if disconnected before auto locking
         {
             // Possible edge case when proximity key is set to connection range and it connects, unlocks, but then looses connection
@@ -584,8 +596,8 @@ void setupBluetooth()
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06); // Set minimum connection interval to 7.5ms
-    pAdvertising->setMaxPreferred(0x10); // Set maximum connection interval to 20ms
+    pAdvertising->setMinPreferred(0xA0); // Set minimum connection interval to 200ms
+    pAdvertising->setMaxPreferred(0xC8); // Set maximum connection interval to 250ms
     BLEDevice::startAdvertising();
 
     // Register the GAP callback to receive RSSI results
@@ -638,6 +650,15 @@ void bluetoothLoop()
 {
     readRssi();
     readBootButton();
+
+    if (deviceConnected && connParamsPending && millis() >= connParamUpdateAt)
+    {
+        connParamsPending = false;
+        // 0xA0*1.25ms=200ms .. 0xC8*1.25ms=250ms, latency 1, timeout 600*10ms=6s
+        pServer->updateConnParams(peerAddress, 0xA0, 0xC8, 1, 600);
+        if (DEBUG_MODE)
+            Serial.println("Requested low-power connection parameters");
+    }
 
     if (!deviceConnected && oldDeviceConnected)
     {

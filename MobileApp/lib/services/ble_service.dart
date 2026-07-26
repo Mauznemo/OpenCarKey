@@ -131,18 +131,23 @@ class BleService {
         print('Device is not connected');
         return null;
       }
-      await device.requestMtu(64);
-      final services = await device.discoverServices();
-      final service = services.firstWhere((service) =>
-          service.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'));
-      final characteristic = service.characteristics.firstWhere(
-          (characteristic) =>
-              characteristic.uuid ==
-              Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
-
       final vehicle = BleBackgroundService.vehicles.firstWhere(
           (vehicle) => vehicle.device.remoteId.str == device.remoteId.str);
       final sharedSecret = vehicle.data.sharedSecret;
+
+      // Reuse the characteristic cached on connect. MTU + service discovery are
+      // already done in _handleConnected, so we only rediscover as a fallback
+      // when the cache is cold (e.g. after a service restart).
+      var characteristic = vehicle.characteristic;
+      if (characteristic == null || characteristic.device.isDisconnected) {
+        final services = await device.discoverServices();
+        final service = services.firstWhere((service) =>
+            service.uuid == Guid('0000ffe0-0000-1000-8000-00805f9b34fb'));
+        characteristic = service.characteristics.firstWhere((characteristic) =>
+            characteristic.uuid ==
+            Guid('0000ffe1-0000-1000-8000-00805f9b34fb'));
+        vehicle.characteristic = characteristic;
+      }
 
       final List<int> payloadBytes = <int>[];
 

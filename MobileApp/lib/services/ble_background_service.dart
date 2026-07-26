@@ -386,6 +386,9 @@ class BleBackgroundService {
           characteristic.uuid == Guid('0000ffe1-0000-1000-8000-00805f9b34fb'),
     );
 
+    // Cache the write characteristic so sendCommand skips MTU + service discovery.
+    vehicle.characteristic = characteristic;
+
     // Set true as soon as *any* notification is delivered on this connection.
     // Proves the GATT notification pipe actually works; used below to detect the
     // first-connect case where setNotifyValue silently fails to deliver.
@@ -471,6 +474,18 @@ class BleBackgroundService {
 
     ActivityService.instance.logConnectedToVehicle(vehicle.data);
 
+    // Nudge Android toward a low-power connection interval. The firmware also
+    // requests this (authoritatively, ~5s after connect); this is harmless if
+    // it already landed. flutter_blue_plus 1.35 maps it to
+    // BluetoothGatt.requestConnectionPriority(CONNECTION_PRIORITY_LOW_POWER).
+    try {
+      await event.device.requestConnectionPriority(
+        connectionPriorityRequest: ConnectionPriority.lowPower,
+      );
+    } catch (e) {
+      debugPrint('requestConnectionPriority failed: $e');
+    }
+
     // On the very first connection the GATT notification subscription sometimes
     // silently fails to deliver (Android GATT cache / autoConnect timing), so
     // the GET_DATA response (and every later LOCKED/UNLOCKED) never arrives and
@@ -518,6 +533,8 @@ class BleBackgroundService {
         );
         if (subscription != null && characteristic != null) {
           await characteristic.setNotifyValue(true);
+          // Keep the cache valid if the handle was re-resolved here.
+          vehicle.characteristic = characteristic;
         }
       } catch (e) {
         debugPrint('Error re-asserting notifications for $mac: $e');
@@ -558,6 +575,9 @@ class BleBackgroundService {
       subscription.cancel();
       _subscriptions.remove(event.device.remoteId.str);
     }
+
+    // Invalidate the cached characteristic; it belongs to the dead connection.
+    vehicle.characteristic = null;
 
     // Only treat this as a real disconnect if the device had actually
     // connected. autoConnect can emit a `disconnected` event for a device that
