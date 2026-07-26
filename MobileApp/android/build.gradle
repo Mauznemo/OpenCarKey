@@ -16,6 +16,33 @@ allprojects {
     }
 }
 
+// home_widget (and its androidx.glance dependency) ship Kotlin bytecode built
+// for JVM target 11. Flutter plugin modules still default their Kotlin target to
+// 1.8, and the Kotlin inliner refuses to inline JVM 11 bytecode into a 1.8
+// target (`:home_widget:compileReleaseKotlin` fails). Force every subproject's
+// Kotlin target to 11 to match the app module.
+subprojects {
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
+    }
+    // Keep Java in step with Kotlin (11); Gradle rejects a module whose Java and
+    // Kotlin JVM targets disagree. Set it through the Android DSL so the Android
+    // Gradle plugin doesn't reset the JavaCompile tasks back to the plugin
+    // module's own compileOptions (1.8).
+    afterEvaluate {
+        if (project.hasProperty("android")) {
+            project.android {
+                compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_11
+                    targetCompatibility JavaVersion.VERSION_11
+                }
+            }
+        }
+    }
+}
+
 rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
