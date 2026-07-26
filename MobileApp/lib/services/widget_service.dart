@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:home_widget/home_widget.dart';
 
-import '../types/ble_commands.dart';
+import '../types/ble_commands.dart' show Esp32Response;
 import '../models/ble_device.dart';
+import '../types/background_vehicle.dart';
 import '../types/features.dart';
 import '../models/vehicle.dart';
 import 'ble_background_service.dart';
@@ -12,10 +13,53 @@ import 'vehicle_service.dart';
 
 @pragma('vm:entry-point')
 class WidgetService {
-  static FlutterBackgroundService service = FlutterBackgroundService();
   static List<Vehicle> vehicles = [];
   static List<Vehicle> connectedVehicles = [];
   static int selectedVehicleIndex = 0;
+
+  /// In-flight widget button commands, keyed by MAC → set of action keys
+  /// ('doors', 'trunk'). Drives the loading spinner on the home-screen widget,
+  /// mirroring the in-app buttons. Doors clear on the ESP's LOCKED/UNLOCKED
+  /// confirmation; trunk clears when the command write completes; both have a
+  /// safety timeout so the spinner can never spin forever.
+  static const Duration _pendingTimeout = Duration(seconds: 10);
+  static final Map<String, Set<String>> _pendingActions = {};
+  static final Map<String, Timer> _pendingTimers = {};
+
+  static void _setPending(String macAddress, String action) {
+    _pendingActions.putIfAbsent(macAddress, () => <String>{}).add(action);
+    _pendingTimers['$macAddress|$action']?.cancel();
+    _pendingTimers['$macAddress|$action'] = Timer(_pendingTimeout, () {
+      _clearPending(macAddress, action);
+      updateConnectedVehicle();
+    });
+    updateConnectedVehicle();
+  }
+
+  static void _clearPending(String macAddress, String action) {
+    _pendingActions[macAddress]?.remove(action);
+    if (_pendingActions[macAddress]?.isEmpty ?? false) {
+      _pendingActions.remove(macAddress);
+    }
+    _pendingTimers.remove('$macAddress|$action')?.cancel();
+  }
+
+  static bool _isPending(String macAddress, String action) =>
+      _pendingActions[macAddress]?.contains(action) ?? false;
+
+  /// Marks a widget action pending (shows the button spinner) and refreshes the
+  /// widget. (ONLY call from the Background service isolate — that is the only
+  /// isolate where [connectedVehicles] is populated, so the widget doesn't get
+  /// wiped to the "nothing connected" state.)
+  static void setPending(String macAddress, String action) =>
+      _setPending(macAddress, action);
+
+  /// Clears a pending widget action and refreshes the widget. (ONLY call from
+  /// the Background service isolate.)
+  static void clearPending(String macAddress, String action) {
+    _clearPending(macAddress, action);
+    updateConnectedVehicle();
+  }
 
   /// Initializes the widget service. (ONLY call from Background service isolate)
   static Future<void> initialize({bool backgroundServiceEnabled = true}) async {
@@ -28,22 +72,22 @@ class WidgetService {
   /// Updates the widget with the new state of the current connected vehicle. (ONLY call from Background service isolate)
   static void processMessage(String macAddress, Esp32Response command) {
     if (connectedVehicles.isEmpty ||
-        connectedVehicles.length < selectedVehicleIndex) {
+        connectedVehicles.length <= selectedVehicleIndex) {
       return;
     }
 
-    if (macAddress ==
-        connectedVehicles[selectedVehicleIndex].device.macAddress) {
-      if (command == Esp32Response.LOCKED) {
-        connectedVehicles[selectedVehicleIndex] =
-            connectedVehicles[selectedVehicleIndex].copyWith(doorsLocked: true);
-      } else if (command == Esp32Response.UNLOCKED) {
-        connectedVehicles[selectedVehicleIndex] =
-            connectedVehicles[selectedVehicleIndex]
-                .copyWith(doorsLocked: false);
-      }
+    // Any lock-state confirmation clears the doors spinner for that vehicle.
+    if (command == Esp32Response.LOCKED ||
+        command == Esp32Response.UNLOCKED ||
+        command == Esp32Response.PROXIMITY_LOCKED ||
+        command == Esp32Response.PROXIMITY_UNLOCKED) {
+      _clearPending(macAddress, 'doors');
     }
 
+    // Lock state is read straight from the authoritative BackgroundVehicle in
+    // [updateConnectedVehicle], so we don't mutate a local copy here (that copy
+    // was the source of the "widget stuck locked after reconnect" bug: it was
+    // reset to the doorsLocked=true default on every reloadConnectedDevices).
     updateConnectedVehicle();
   }
 
@@ -83,10 +127,22 @@ class WidgetService {
       }
     }
 
-    if (connectedVehicles.length < selectedVehicleIndex) {
+    if (connectedVehicles.length <= selectedVehicleIndex) {
       selectedVehicleIndex = 0;
     }
     updateConnectedVehicle();
+  }
+
+  /// Returns the authoritative background vehicle for [macAddress] (the one
+  /// whose [BackgroundVehicle.doorsLocked] is kept up to date by
+  /// [BleBackgroundService], reliably, regardless of widget reload timing).
+  static BackgroundVehicle? _authoritativeVehicle(String macAddress) {
+    for (final vehicle in BleBackgroundService.vehicles) {
+      if (vehicle.device.remoteId.str == macAddress) {
+        return vehicle;
+      }
+    }
+    return null;
   }
 
   static Future<void> _getVehicles() async {
@@ -110,41 +166,37 @@ class WidgetService {
 
   @pragma('vm:entry-point')
   static void backgroundCallback(Uri? uri) {
-    if (uri != null) {
-      final actionType = uri.queryParameters['action_type'] ?? 'unknown_action';
-      final macAddress = uri.queryParameters['mac_address'] ?? 'unknown_mac';
+    if (uri == null) return;
 
-      if (actionType == 'change_vehicle') {
-        BleBackgroundService.changeHomescreenWidgetVehicle();
-        return;
-      }
+    final actionType = uri.queryParameters['action_type'] ?? 'unknown_action';
+    final macAddress = uri.queryParameters['mac_address'] ?? 'unknown_mac';
 
-      if (macAddress == 'unknown_mac') {
-        return;
-      }
+    if (actionType == 'change_vehicle') {
+      BleBackgroundService.changeHomescreenWidgetVehicle();
+      return;
+    }
 
-      print('Action type: $actionType');
+    if (macAddress == 'unknown_mac') {
+      return;
+    }
 
-      switch (actionType) {
-        case 'lock':
-          BleBackgroundService.sendCommand(
-              BleDevice(macAddress: macAddress), ClientCommand.LOCK_DOORS);
-          break;
-        case 'unlock':
-          BleBackgroundService.sendCommand(
-              BleDevice(macAddress: macAddress), ClientCommand.UNLOCK_DOORS);
-          break;
-        case 'open_trunk':
-          BleBackgroundService.sendCommand(
-              BleDevice(macAddress: macAddress), ClientCommand.OPEN_TRUNK);
-          break;
-        case 'start_engine':
-          //TODO: Implement engine start
-          break;
-        default:
-          print('Unknown action type: $actionType');
-      }
-      _updateWidget();
+    print('Action type: $actionType');
+
+    // This callback runs in home_widget's own isolate, where WidgetService's
+    // connected-vehicle state is empty. Forward the action to the background
+    // task isolate (which owns that state) so it can drive the pending spinner,
+    // send the command and log it. Doing any of that here would call
+    // updateConnectedVehicle() with an empty connectedVehicles list, wiping the
+    // widget to the "nothing connected" state until the ESP confirmation lands.
+    switch (actionType) {
+      case 'lock':
+      case 'unlock':
+      case 'open_trunk':
+      case 'start_engine':
+        BleBackgroundService.sendWidgetAction(macAddress, actionType);
+        break;
+      default:
+        print('Unknown action type: $actionType');
     }
   }
 
@@ -154,6 +206,14 @@ class WidgetService {
       await HomeWidget.saveWidgetData<String>('currentVehicle', 'none');
     } else {
       final currentVehicle = connectedVehicles[selectedVehicleIndex];
+      // Read lock/engine state from the authoritative BackgroundVehicle instead
+      // of the local (reset-on-reload) copy, so the widget can't get stuck on
+      // the doorsLocked=true default after a reconnect.
+      final authoritative =
+          _authoritativeVehicle(currentVehicle.device.macAddress);
+      final isLocked = authoritative?.doorsLocked ?? currentVehicle.doorsLocked;
+      final engineOn = authoritative?.engineOn ?? currentVehicle.engineOn;
+
       await HomeWidget.saveWidgetData<String>(
           'currentVehicle',
           json.encode({
@@ -163,8 +223,12 @@ class WidgetService {
                 currentVehicle.data.features.contains(Feature.engine),
             'hasTrunkUnlock':
                 currentVehicle.data.features.contains(Feature.trunkOpen),
-            'isLocked': currentVehicle.doorsLocked,
-            'engineOn': currentVehicle.engineOn,
+            'isLocked': isLocked,
+            'engineOn': engineOn,
+            'pendingDoors':
+                _isPending(currentVehicle.device.macAddress, 'doors'),
+            'pendingTrunk':
+                _isPending(currentVehicle.device.macAddress, 'trunk'),
             'multipleConnectedDevices': connectedVehicles.length > 1
           }));
     }

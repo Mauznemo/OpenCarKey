@@ -1,6 +1,9 @@
 # Lock Controller
 ### Sections
 **[Config](#config)**<br>
+&emsp;[DEVICE_NAME](#device_name)<br>
+&emsp;[PASSWORD](#password)<br>
+&emsp;[SUPPORTED_FEATURES](#supported_features)<br>
 **[Custom code for locking, unlocking etc.](#custom-code-for-locking-unlocking-etc)**<br>
 &emsp;[Locking](#locking)<br>
 &emsp;[Unlocking](#unlocking)<br>
@@ -23,7 +26,25 @@
 **[Ble communication protocol](#ble-communication-protocol)**<br>
 
 ## Config
-Open `platformio.ini`. There you can set your password (`LOCK_PIN`) and BLE device name (`DEVICE_NAME`).
+Open `Firmware/LockController/src/config.h`.
+
+### `DEVICE_NAME`
+Set this to the name the device should show as during Bluetooth discovery (This is not the name of the vehicle that will be shown in the app, normal Bluetooth will not see this name in plain text)
+
+### `PASSWORD`
+Set this to a unique password (longer passwords are more secure).
+
+### `SUPPORTED_FEATURES`
+With this you can define all the capabilities your vehicle has, so that the appropriate buttons will be shown in the app's interface.
+To define multiple just chain then together using `|` like `Feature::DoorsLock | Feature::TrunkOpen`.
+
+These are available:
+| Feature     | Description                                                                |
+| ----------- | -------------------------------------------------------------------------- |
+| `DoorsLock` | Button to lock or unlock the vehicle will be shown.                        |
+| `TrunkOpen` | Button to pop open the trunk will be shown.                                |
+| `Engine`    | Button to start or stop the engine will be shown.  (Not implemented yet)   |
+| `Windows`   | Button to roll the windows up or down will be shown. (Not implemented yet) |
 
 ## Custom code for locking, unlocking etc.
 ### Locking
@@ -208,27 +229,27 @@ Communication protocol between ESP and App.
 ### Response structure (From ESP32)
 1 byte command (+ optional additional data length + bytes)
 
-| Message                                                         | Response                                         |
-| ----------------------------------------------------------------| ------------------------------------------------ |
-| `0x00` (GET_VERSION)                                            | `0x01 + {Current protocol version str}` (VERSION)|
-| Anything with no/invalid rolling code (HMAC)                    | `0x00` (INVALID_HMAC)                            |
-| `0x01` (GET_DATA)                                               | `0x02` (LOCKED) or `0x04` (UNLOCKED)             |
-| `0x02` (LOCK_DOORS)                                             | `0x02` (LOCKED)                                  |
-| `0x03` (UNLOCK_DOORS)                                           | `0x04` (UNLOCKED)                                |
-| `0x04` (OPEN_TRUNK)                                             | None                                             |
-| `0x05` (START_ENGINE)                                           | None                                             |
-| `0x06` (STOP_ENGINE)                                            | None                                             |
-| `0x07` (PROXIMITY_KEY_ON)                                       | None                                             |
-| `0x08` (PROXIMITY_KEY_OFF)                                      | None                                             |
-| `0x09 + {Proximity cooldown float in min}` (PROXIMITY_COOLDOWN) | None                                             |
-| `0x0A + {Rssi float, Rssi dead zone float}` (RSSI_TRIGGER)      | None                                             |
-| `0x0B` (GET_RSSI)                                               | `0x06 + {Rssi float}` (RSSI) can take 500ms      |
-| `0x0C` (GET_FEATURES)                                           | `0x07 + {int bitmask}` (FEATURES)                |
+| Message                                                         | Response                                          |
+| --------------------------------------------------------------- | ------------------------------------------------- |
+| `0x00` (GET_VERSION)                                            | `0x01 + {Current protocol version str}` (VERSION) |
+| Anything with no/invalid rolling code (HMAC)                    | `0x00` (INVALID_HMAC)                             |
+| `0x01` (GET_DATA)                                               | `0x02` (LOCKED) or `0x04` (UNLOCKED)              |
+| `0x02` (LOCK_DOORS)                                             | `0x02` (LOCKED)                                   |
+| `0x03` (UNLOCK_DOORS)                                           | `0x04` (UNLOCKED)                                 |
+| `0x04` (OPEN_TRUNK)                                             | None                                              |
+| `0x05` (START_ENGINE)                                           | None                                              |
+| `0x06` (STOP_ENGINE)                                            | None                                              |
+| `0x07` (PROXIMITY_KEY_ON)                                       | None                                              |
+| `0x08` (PROXIMITY_KEY_OFF)                                      | None                                              |
+| `0x09 + {Proximity cooldown float in min}` (PROXIMITY_COOLDOWN) | None                                              |
+| `0x0A + {Rssi float, Rssi dead zone float}` (RSSI_TRIGGER)      | None                                              |
+| `0x0B` (GET_RSSI)                                               | `0x06 + {Rssi float}` (RSSI) can take 500ms       |
+| `0x0C` (GET_FEATURES)                                           | `0x07 + {int bitmask}` (FEATURES)                 |
 
 `RSSI_TRIGGER` (0x0A) sets the **rssi strength** where proximity key will unlock and the **zone** (in rough meters) where nothing will happen. Eg. 5m: After the car was locked you have to get around 5m closer to it to unlock again. This is to prevent rapid locking and unlocking if you are at the exact trigger distance
 
-| Message from ESP             | Description                              |
-| ---------------------------- | ---------------------------------------- |
-| `0x03` (PROXIMITY_LOCKED)    | Vehicle was locked using proximity key   |
-| `0x05` (PROXIMITY_UNLOCKED)  | Vehicle was unlocked using proximity key |
+| Message from ESP            | Description                              |
+| --------------------------- | ---------------------------------------- |
+| `0x03` (PROXIMITY_LOCKED)   | Vehicle was locked using proximity key   |
+| `0x05` (PROXIMITY_UNLOCKED) | Vehicle was unlocked using proximity key |
 
