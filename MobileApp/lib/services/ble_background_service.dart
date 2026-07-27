@@ -80,6 +80,17 @@ class BleBackgroundService {
   // whose notifications never work can't get stuck in a disconnect/reconnect
   // loop. Cleared as soon as a notification actually arrives.
   static final Set<String> _autoReconnectAttempted = {};
+  // MACs whose connection survived setup and therefore produced a "Connected"
+  // entry in the activity log. Near the edge of range the link can drop while
+  // _handleConnected is still running ("half connect"); those get no log entry,
+  // so they must not produce a matching "Disconnected" one either.
+  static final Set<String> _loggedConnectMacs = {};
+  // Watchdogs for the silent recovery reconnect in [_handleDisconnected]. That
+  // path deliberately skips the user-facing disconnect report because the
+  // device is expected right back — if it never comes, this fires and reports
+  // the disconnect for real instead of leaving the notification stuck.
+  static final Map<String, Timer> _autoReconnectWatchdogs = {};
+  static const Duration _autoReconnectTimeout = Duration(seconds: 30);
   static late SharedPreferences _prefs;
   static bool _proximityKeyEnabled = false;
   static double _proximityStrength = 100;
@@ -163,6 +174,7 @@ class BleBackgroundService {
     _connectedMacs.clear();
     _autoReconnectPending.clear();
     _autoReconnectAttempted.clear();
+    _loggedConnectMacs.clear();
 
     _prefs = await SharedPreferences.getInstance();
     _proximityKeyEnabled = _prefs.getBool('proximityKey') ?? false;
@@ -193,6 +205,11 @@ class BleBackgroundService {
   static Future<void> _teardownListeners() async {
     await _connectionStateSub?.cancel();
     _connectionStateSub = null;
+
+    for (final timer in _autoReconnectWatchdogs.values) {
+      timer.cancel();
+    }
+    _autoReconnectWatchdogs.clear();
 
     if (_messageListener != null) {
       _onMessageReceived.removeListener(_messageListener!);
@@ -268,6 +285,26 @@ class BleBackgroundService {
       await BleDeviceStorageService.addDevice(mac);
     } else {
       await BleDeviceStorageService.removeDevice(mac);
+
+      // The link can drop while we are still handling the `connected` event —
+      // _handleConnected runs for a couple of seconds and this is common at the
+      // edge of range. Dropping the MAC here without further ado would make the
+      // queued `disconnected` event find _connectedMacs already empty, take the
+      // "never connected" early return, and skip every user-facing side effect,
+      // leaving the notification stuck on "Connected to X" indefinitely (the
+      // foreground notification is only ever written by _updateNotification, so
+      // nothing else corrects it). Report the disconnect from here instead; the
+      // real `disconnected` event that follows then no-ops on wasConnected.
+      if (event.connectionState == BluetoothConnectionState.connected &&
+          _connectedMacs.contains(mac)) {
+        debugPrint('$mac dropped while handling its connect — reporting it');
+        try {
+          await _handleDisconnected(event, changedVehicle, ignoreProximityKey);
+        } catch (e) {
+          debugPrint('Error handling drop during connect for $mac: $e');
+        }
+      }
+
       _connectedMacs.remove(mac);
     }
 
@@ -365,9 +402,15 @@ class BleBackgroundService {
     // characteristic subscription below from leaking on top of a previous one.
     // The MAC is removed again in _handleDisconnected, so a genuine reconnect
     // is handled normally.
-    if (!_connectedMacs.add(event.device.remoteId.str)) {
+    final mac = event.device.remoteId.str;
+
+    // The device is back, so a recovery reconnect (if any) landed and its
+    // watchdog has nothing left to report.
+    _autoReconnectWatchdogs.remove(mac)?.cancel();
+
+    if (!_connectedMacs.add(mac)) {
       debugPrint(
-        'Already connected to ${event.device.remoteId.str}, ignoring duplicate connected event',
+        'Already connected to $mac, ignoring duplicate connected event',
       );
       return;
     }
@@ -472,8 +515,6 @@ class BleBackgroundService {
       );
     }
 
-    ActivityService.instance.logConnectedToVehicle(vehicle.data);
-
     // Nudge Android toward a low-power connection interval. The firmware also
     // requests this (authoritatively, ~5s after connect); this is harmless if
     // it already landed. flutter_blue_plus 1.35 maps it to
@@ -484,6 +525,18 @@ class BleBackgroundService {
       );
     } catch (e) {
       debugPrint('requestConnectionPriority failed: $e');
+    }
+
+    // Only log a connect that actually survived setup. Near the edge of range
+    // the link can drop while the commands above are still running, and logging
+    // that would leave a "Connected" entry in the history with no matching
+    // disconnect. The drop itself is caught by the reconcile in
+    // [_processConnectionStateChanged], which runs the disconnect handling.
+    if (event.device.isConnected) {
+      _loggedConnectMacs.add(mac);
+      ActivityService.instance.logConnectedToVehicle(vehicle.data);
+    } else {
+      debugPrint('Not logging connect for $mac: link dropped during setup');
     }
 
     // On the very first connection the GATT notification subscription sometimes
@@ -569,11 +622,12 @@ class BleBackgroundService {
     BackgroundVehicle vehicle,
     bool ignoreProximityKey,
   ) async {
-    final subscription = _subscriptions[event.device.remoteId.str];
+    final mac = event.device.remoteId.str;
+    final subscription = _subscriptions[mac];
 
     if (subscription != null) {
       subscription.cancel();
-      _subscriptions.remove(event.device.remoteId.str);
+      _subscriptions.remove(mac);
     }
 
     // Invalidate the cached characteristic; it belongs to the dead connection.
@@ -583,27 +637,46 @@ class BleBackgroundService {
     // connected. autoConnect can emit a `disconnected` event for a device that
     // was never present (e.g. a vehicle added months ago and out of range),
     // which must not produce a notification or an activity log entry.
-    final bool wasConnected = _connectedMacs.remove(event.device.remoteId.str);
+    final bool wasConnected = _connectedMacs.remove(mac);
+    final bool loggedConnect = _loggedConnectMacs.remove(mac);
 
     // If we disconnected on purpose to recover a dead notification pipe (see
     // _ensureNotificationsWorking), reconnect right away and skip the
     // user-facing disconnect notification/vibration/log — it isn't a real
     // disconnect from the user's perspective.
-    if (_autoReconnectPending.remove(event.device.remoteId.str)) {
-      debugPrint(
-        'Reconnecting ${event.device.remoteId.str} to recover notifications',
+    if (_autoReconnectPending.remove(mac)) {
+      debugPrint('Reconnecting $mac to recover notifications');
+      _updateNotification(
+        'Reconnecting to ${vehicle.data.name}',
+        'Refreshing the connection to ${vehicle.data.name}...',
       );
+      // If the reconnect never lands (the vehicle went out of range in the
+      // meantime) nothing would ever correct the notification again, so fall
+      // through to the real disconnect report after a grace period.
+      _armAutoReconnectWatchdog(vehicle, ignoreProximityKey, loggedConnect);
       await BleService.connectToDevice(vehicle.device);
       return;
     }
 
     if (!wasConnected) {
-      debugPrint(
-        'Ignoring disconnect for ${event.device.remoteId.str} that was never connected',
-      );
+      debugPrint('Ignoring disconnect for $mac that was never connected');
       return;
     }
 
+    _reportDisconnect(vehicle, ignoreProximityKey, loggedConnect);
+  }
+
+  /// Emits the user-facing side effects of a disconnect: the foreground
+  /// notification, the proximity-lock vibration and the activity log entry.
+  /// [loggedConnect] is false for a "half connect" (the link dropped while
+  /// [_handleConnected] was still running, so no "Connected" entry exists) —
+  /// the notification still has to be corrected, but the history entry is
+  /// skipped so half connects at the edge of range don't spam the log.
+  static void _reportDisconnect(
+    BackgroundVehicle vehicle,
+    bool ignoreProximityKey,
+    bool loggedConnect,
+  ) {
     if (_proximityKeyEnabled && !ignoreProximityKey) {
       _updateNotification(
         'Disconnected from ${vehicle.data.name} (Proxy Locked)',
@@ -628,7 +701,38 @@ class BleBackgroundService {
       );
     }
 
-    ActivityService.instance.logDisconnectedFromVehicle(vehicle.data);
+    if (loggedConnect) {
+      ActivityService.instance.logDisconnectedFromVehicle(vehicle.data);
+    } else {
+      debugPrint(
+        'Not logging disconnect for ${vehicle.data.macAddress}: its connect was '
+        'never logged (link dropped during setup)',
+      );
+    }
+  }
+
+  /// Arms the fallback for the silent recovery reconnect in
+  /// [_handleDisconnected]: if [vehicle] is still not back after
+  /// [_autoReconnectTimeout], report the disconnect for real. The persisted
+  /// device list (and with it the app + widget) was already reconciled by
+  /// [_processConnectionStateChanged], so only the notification and the
+  /// activity log need catching up here.
+  static void _armAutoReconnectWatchdog(
+    BackgroundVehicle vehicle,
+    bool ignoreProximityKey,
+    bool loggedConnect,
+  ) {
+    final mac = vehicle.device.remoteId.str;
+    _autoReconnectWatchdogs.remove(mac)?.cancel();
+    _autoReconnectWatchdogs[mac] = Timer(_autoReconnectTimeout, () {
+      _autoReconnectWatchdogs.remove(mac);
+      if (vehicle.device.isConnected) return;
+
+      debugPrint(
+        'Recovery reconnect for $mac never landed — reporting a real disconnect',
+      );
+      _reportDisconnect(vehicle, ignoreProximityKey, loggedConnect);
+    });
   }
 
   static Future<void> _handleMessage(Esp32ResponseDate espResponseData) async {
