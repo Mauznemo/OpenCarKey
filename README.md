@@ -15,7 +15,7 @@ If you need help or have more feature ideas you can join the [Discord](https://d
 
 ## Features:
 ### Current
-- App to lock, unlock, open the trunk or remote start the engine from your phone
+- App to lock, unlock, open the trunk, remote start or stop the engine and open or close the windows from your phone
 - Proximity key (with customizable trigger range) to auto lock and unlock your car if you are near it
 - Support for multiple vehicles
 - Home screen widget
