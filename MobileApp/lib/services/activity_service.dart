@@ -36,6 +36,12 @@ class ActivityService {
   Future<void> logUserStoppedEngine(VehicleData? vehicleData) =>
       _log(ActivityEventType.userStoppedEngine, vehicleData);
 
+  Future<void> logUserOpenedWindows(VehicleData? vehicleData) =>
+      _log(ActivityEventType.userOpenedWindows, vehicleData);
+
+  Future<void> logUserClosedWindows(VehicleData? vehicleData) =>
+      _log(ActivityEventType.userClosedWindows, vehicleData);
+
   Future<void> logProximityLocked(VehicleData? vehicleData) =>
       _log(ActivityEventType.proximityLocked, vehicleData);
 
@@ -64,6 +70,12 @@ class ActivityService {
         break;
       case ClientCommand.STOP_ENGINE:
         logUserStoppedEngine(vehicleData);
+        break;
+      case ClientCommand.OPEN_WINDOWS:
+        logUserOpenedWindows(vehicleData);
+        break;
+      case ClientCommand.CLOSE_WINDOWS:
+        logUserClosedWindows(vehicleData);
         break;
       default:
         break;

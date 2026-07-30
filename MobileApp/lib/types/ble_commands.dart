@@ -43,7 +43,13 @@ enum ClientCommand {
   GET_RSSI(0x0B),
 
   /// Gets the features supported by the vehicle
-  GET_FEATURES(0x0C);
+  GET_FEATURES(0x0C),
+
+  /// Opens (rolls down) the windows
+  OPEN_WINDOWS(0x0D),
+
+  /// Closes (rolls up) the windows
+  CLOSE_WINDOWS(0x0E);
 
   const ClientCommand(this.value);
   final int value;
@@ -87,7 +93,19 @@ enum Esp32Response {
   /// Features supported by the vehicle
   ///
   /// Additional data: `int` bitmask
-  FEATURES(0x07);
+  FEATURES(0x07),
+
+  /// Engine was started
+  ENGINE_STARTED(0x08),
+
+  /// Engine was stopped
+  ENGINE_STOPPED(0x09),
+
+  /// Windows were opened
+  WINDOWS_OPENED(0x0A),
+
+  /// Windows were closed
+  WINDOWS_CLOSED(0x0B);
 
   const Esp32Response(this.value);
   final int value;

@@ -14,6 +14,12 @@ extern void (*onUnlocked)(bool proximity);
 extern void (*onTrunkOpened)();
 /// @brief Called when the engine gets started from the app
 extern void (*onEngineStarted)();
+/// @brief Called when the engine gets stopped from the app
+extern void (*onEngineStopped)();
+/// @brief Called when the windows get opened from the app
+extern void (*onWindowsOpened)();
+/// @brief Called when the windows get closed from the app
+extern void (*onWindowsClosed)();
 
 /// @brief Version of the bluetooth protocol
 extern const std::string PROTOCOL_VERSION;
@@ -24,6 +30,10 @@ extern bool deviceConnected;
 extern bool autoLocking;
 /// @brief Is the car locked
 extern bool isLocked;
+/// @brief Is the engine running (as far as the controller knows, resets on reboot)
+extern bool engineOn;
+/// @brief Are the windows open (as far as the controller knows, resets on reboot)
+extern bool windowsOpen;
 
 /// @brief Sets up bluetooth
 void setupBluetooth();

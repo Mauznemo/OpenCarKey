@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 // clang-format off
-// Protocol Version: V2
+// Protocol Version: V4
 
 /// @brief Commands sent by the client/app to the ESP32
 enum class ClientCommand : uint8_t
@@ -21,7 +21,9 @@ enum class ClientCommand : uint8_t
     PROXIMITY_COOLDOWN = 0x09,   // includes proximity cooldown float in min
     RSSI_TRIGGER       = 0x0A,   // includes Rssi float, Rssi dead zone float
     GET_RSSI           = 0x0B,
-    GET_FEATURES       = 0x0C
+    GET_FEATURES       = 0x0C,
+    OPEN_WINDOWS       = 0x0D,
+    CLOSE_WINDOWS      = 0x0E
 };
 
 const char* toString(ClientCommand cmd)
@@ -41,6 +43,8 @@ const char* toString(ClientCommand cmd)
         case ClientCommand::RSSI_TRIGGER:       return "RSSI_TRIGGER";
         case ClientCommand::GET_RSSI:           return "GET_RSSI";
         case ClientCommand::GET_FEATURES:       return "GET_FEATURES";
+        case ClientCommand::OPEN_WINDOWS:       return "OPEN_WINDOWS";
+        case ClientCommand::CLOSE_WINDOWS:      return "CLOSE_WINDOWS";
         default: return "UNKNOWN_COMMAND";
     }
 }
@@ -57,6 +61,10 @@ enum class Esp32Response : uint8_t
     PROXIMITY_UNLOCKED = 0x05,
     RSSI               = 0x06,   // includes Rssi float
     FEATURES           = 0x07,   // includes supported features
+    ENGINE_STARTED     = 0x08,
+    ENGINE_STOPPED     = 0x09,
+    WINDOWS_OPENED     = 0x0A,
+    WINDOWS_CLOSED     = 0x0B,
 };
 
 #endif

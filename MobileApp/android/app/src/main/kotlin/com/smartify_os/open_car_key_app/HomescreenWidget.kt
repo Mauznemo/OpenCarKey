@@ -70,10 +70,14 @@ class HomescreenWidget : GlanceAppWidget() {
         var macAddress = ""
         var hasEngineStart = false
         var hasTrunkUnlock = false
+        var hasWindows = false
         var isLocked = false
         var engineOn = false
+        var windowsOpen = false
         var pendingDoors = false
         var pendingTrunk = false
+        var pendingEngine = false
+        var pendingWindows = false
         var multipleConnectedDevices = false
 
         if (!backgroundServiceEnabled) {
@@ -105,10 +109,14 @@ class HomescreenWidget : GlanceAppWidget() {
                 macAddress = json.optString("macAddress", "")
                 hasEngineStart = json.optBoolean("hasEngineStart", false)
                 hasTrunkUnlock = json.optBoolean("hasTrunkUnlock", false)
+                hasWindows = json.optBoolean("hasWindows", false)
                 isLocked = json.optBoolean("isLocked", false)
                 engineOn = json.optBoolean("engineOn", false)
+                windowsOpen = json.optBoolean("windowsOpen", false)
                 pendingDoors = json.optBoolean("pendingDoors", false)
                 pendingTrunk = json.optBoolean("pendingTrunk", false)
+                pendingEngine = json.optBoolean("pendingEngine", false)
+                pendingWindows = json.optBoolean("pendingWindows", false)
                 multipleConnectedDevices = json.optBoolean("multipleConnectedDevices", false)
             } catch (e: Exception) {
                 println("Error parsing JSON: ${e.message}")
@@ -159,10 +167,10 @@ class HomescreenWidget : GlanceAppWidget() {
                     .fillMaxWidth()){
                     Box(
                         modifier = GlanceModifier
-                            .size(50.dp)
+                            .size(44.dp)
                             .background(DynamicThemeColorProviders.primaryContainer)
-                            .cornerRadius(25.dp)
-                            .padding(all = 12.dp)
+                            .cornerRadius(22.dp)
+                            .padding(all = 10.dp)
                             // Don't re-trigger the command while one is in flight.
                             .let {
                                 if (pendingDoors) it else it.clickable(
@@ -191,13 +199,13 @@ class HomescreenWidget : GlanceAppWidget() {
                         }
                     }
                     if (hasTrunkUnlock) {
-                        Spacer(GlanceModifier.width(16.dp))
+                        Spacer(GlanceModifier.width(10.dp))
                         Box(
                             modifier = GlanceModifier
-                                .size(50.dp)
+                                .size(44.dp)
                                 .background(DynamicThemeColorProviders.primaryContainer)
-                                .cornerRadius(25.dp)
-                                .padding(all = 12.dp)
+                                .cornerRadius(22.dp)
+                                .padding(all = 10.dp)
                                 // Don't re-trigger the command while one is in flight.
                                 .let {
                                     if (pendingTrunk) it else it.clickable(
@@ -227,29 +235,75 @@ class HomescreenWidget : GlanceAppWidget() {
                         }
                     }
                     if (hasEngineStart) {
-                        Spacer(GlanceModifier.width(16.dp))
+                        Spacer(GlanceModifier.width(10.dp))
                         Box(
                             modifier = GlanceModifier
-                                .size(50.dp)
+                                .size(44.dp)
                                 .background(DynamicThemeColorProviders.primaryContainer)
-                                .cornerRadius(25.dp)
-                                .padding(all = 12.dp)
-                                .clickable(
-                                    actionRunCallback<InteractiveAction>(
-                                    parameters = actionParametersOf(
-                                        ACTION_TYPE_KEY to "start_engine",
-                                        MAC_ADDRESS_KEY to macAddress
+                                .cornerRadius(22.dp)
+                                .padding(all = 10.dp)
+                                // Don't re-trigger the command while one is in flight.
+                                .let {
+                                    if (pendingEngine) it else it.clickable(
+                                        actionRunCallback<InteractiveAction>(
+                                            parameters = actionParametersOf(
+                                                ACTION_TYPE_KEY to if (engineOn) "stop_engine" else "start_engine",
+                                                MAC_ADDRESS_KEY to macAddress
+                                            )
+                                        )
                                     )
-                                    )
-                                ),
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Image(
-                                provider = ImageProvider(R.drawable.restart_alt_24px),
-                                contentDescription = if (engineOn) "Stop Engine" else "Start Engine",
-                                modifier = GlanceModifier.fillMaxSize(),
-                                colorFilter = ColorFilter.tint(DynamicThemeColorProviders.primary)
-                            )
+                            if (pendingEngine) {
+                                CircularProgressIndicator(
+                                    modifier = GlanceModifier.fillMaxSize(),
+                                    color = DynamicThemeColorProviders.primary
+                                )
+                            } else {
+                                Image(
+                                    provider = ImageProvider(if (engineOn) R.drawable.do_disturb_alt_24px else R.drawable.power_settings_new_24px),
+                                    contentDescription = if (engineOn) "Stop Engine" else "Start Engine",
+                                    modifier = GlanceModifier.fillMaxSize(),
+                                    colorFilter = ColorFilter.tint(DynamicThemeColorProviders.primary)
+                                )
+                            }
+                        }
+                    }
+                    if (hasWindows) {
+                        Spacer(GlanceModifier.width(10.dp))
+                        Box(
+                            modifier = GlanceModifier
+                                .size(44.dp)
+                                .background(DynamicThemeColorProviders.primaryContainer)
+                                .cornerRadius(22.dp)
+                                .padding(all = 10.dp)
+                                // Don't re-trigger the command while one is in flight.
+                                .let {
+                                    if (pendingWindows) it else it.clickable(
+                                        actionRunCallback<InteractiveAction>(
+                                            parameters = actionParametersOf(
+                                                ACTION_TYPE_KEY to if (windowsOpen) "close_windows" else "open_windows",
+                                                MAC_ADDRESS_KEY to macAddress
+                                            )
+                                        )
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (pendingWindows) {
+                                CircularProgressIndicator(
+                                    modifier = GlanceModifier.fillMaxSize(),
+                                    color = DynamicThemeColorProviders.primary
+                                )
+                            } else {
+                                Image(
+                                    provider = ImageProvider(if (windowsOpen) R.drawable.keyboard_double_arrow_up_24px else R.drawable.keyboard_double_arrow_down_24px),
+                                    contentDescription = if (windowsOpen) "Close Windows" else "Open Windows",
+                                    modifier = GlanceModifier.fillMaxSize(),
+                                    colorFilter = ColorFilter.tint(DynamicThemeColorProviders.primary)
+                                )
+                            }
                         }
                     }
                 }

@@ -13,5 +13,6 @@ abstract class Vehicle with _$Vehicle {
     @Default(true) bool doorsLocked,
     @Default(true) bool trunkLocked,
     @Default(false) bool engineOn,
+    @Default(false) bool windowsOpen,
   }) = _Vehicle;
 }

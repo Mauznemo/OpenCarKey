@@ -308,7 +308,20 @@ class _EventCard extends StatelessWidget {
           const Color(0xFF22C55E),
         );
       case ActivityEventType.userStoppedEngine:
-        return _EventConfig(Icons.power_off_rounded, const Color(0xFFEF4444));
+        return _EventConfig(
+          Icons.do_disturb_alt_rounded,
+          const Color(0xFFEF4444),
+        );
+      case ActivityEventType.userOpenedWindows:
+        return _EventConfig(
+          Icons.keyboard_double_arrow_down_rounded,
+          const Color(0xFF0EA5E9),
+        );
+      case ActivityEventType.userClosedWindows:
+        return _EventConfig(
+          Icons.keyboard_double_arrow_up_rounded,
+          const Color(0xFF6366F1),
+        );
       case ActivityEventType.proximityLocked:
         return _EventConfig(Icons.sensors_rounded, const Color(0xFF06B6D4));
       case ActivityEventType.proximityUnlocked:

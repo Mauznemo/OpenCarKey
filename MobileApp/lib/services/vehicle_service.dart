@@ -181,6 +181,18 @@ class VehicleService {
         data.command == Esp32Response.PROXIMITY_UNLOCKED) {
       debugPrint('[VehicleService] set vehicle unlocked');
       vehiclesNotifier.setVehicleLocked(data.macAddress, false);
+    } else if (data.command == Esp32Response.ENGINE_STARTED) {
+      debugPrint('[VehicleService] set vehicle engine on');
+      vehiclesNotifier.setVehicleEngineOn(data.macAddress, true);
+    } else if (data.command == Esp32Response.ENGINE_STOPPED) {
+      debugPrint('[VehicleService] set vehicle engine off');
+      vehiclesNotifier.setVehicleEngineOn(data.macAddress, false);
+    } else if (data.command == Esp32Response.WINDOWS_OPENED) {
+      debugPrint('[VehicleService] set vehicle windows open');
+      vehiclesNotifier.setVehicleWindowsOpen(data.macAddress, true);
+    } else if (data.command == Esp32Response.WINDOWS_CLOSED) {
+      debugPrint('[VehicleService] set vehicle windows closed');
+      vehiclesNotifier.setVehicleWindowsOpen(data.macAddress, false);
     }
   }
 

@@ -18,7 +18,7 @@
 
 #define RSSI_SAMPLES 5 // Number of samples for smoothing
 
-const std::string PROTOCOL_VERSION = "V3";
+const std::string PROTOCOL_VERSION = "V4";
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
@@ -33,8 +33,15 @@ void (*onLocked)(bool proximity) = nullptr;
 void (*onUnlocked)(bool proximity) = nullptr;
 void (*onTrunkOpened)() = nullptr;
 void (*onEngineStarted)() = nullptr;
+void (*onEngineStopped)() = nullptr;
+void (*onWindowsOpened)() = nullptr;
+void (*onWindowsClosed)() = nullptr;
 
 bool isLocked = true;
+// Engine and window state are only kept in RAM, so they reset to their safe
+// defaults on reboot (the app re-reads them with GET_DATA on every connect).
+bool engineOn = false;
+bool windowsOpen = false;
 bool deviceConnected = false;
 bool autoLocking = false;
 
@@ -174,8 +181,58 @@ namespace
 
     void startEngine()
     {
+        if (deviceConnected)
+            sendToClient(Esp32Response::ENGINE_STARTED);
+
+        engineOn = true;
+
         if (onEngineStarted)
             onEngineStarted();
+
+        if (DEBUG_MODE)
+            Serial.println("Engine started");
+    }
+
+    void stopEngine()
+    {
+        if (deviceConnected)
+            sendToClient(Esp32Response::ENGINE_STOPPED);
+
+        engineOn = false;
+
+        if (onEngineStopped)
+            onEngineStopped();
+
+        if (DEBUG_MODE)
+            Serial.println("Engine stopped");
+    }
+
+    void openWindows()
+    {
+        if (deviceConnected)
+            sendToClient(Esp32Response::WINDOWS_OPENED);
+
+        windowsOpen = true;
+
+        if (onWindowsOpened)
+            onWindowsOpened();
+
+        if (DEBUG_MODE)
+            Serial.println("Windows opened");
+    }
+
+    void closeWindows()
+    {
+        if (deviceConnected)
+            sendToClient(Esp32Response::WINDOWS_CLOSED);
+
+        windowsOpen = false;
+
+        if (onWindowsClosed)
+            onWindowsClosed();
+
+        if (DEBUG_MODE)
+            Serial.println("Windows closed");
     }
 
     void enableProxKey()
@@ -400,7 +457,21 @@ class MyCallbacks : public BLECharacteristicCallbacks
             sendToClientString(Esp32Response::VERSION, PROTOCOL_VERSION.c_str());
             break;
         case ClientCommand::GET_DATA:
+            // One notification per state the vehicle actually supports, with a
+            // small gap so they don't get sent faster than the client can be
+            // notified. States for unsupported features are not reported at all,
+            // so the app doesn't show a state for a button it never renders.
             sendToClient(isLocked ? Esp32Response::LOCKED : Esp32Response::UNLOCKED);
+            if ((SUPPORTED_FEATURES & Feature::Engine) != Feature::None)
+            {
+                delay(20);
+                sendToClient(engineOn ? Esp32Response::ENGINE_STARTED : Esp32Response::ENGINE_STOPPED);
+            }
+            if ((SUPPORTED_FEATURES & Feature::Windows) != Feature::None)
+            {
+                delay(20);
+                sendToClient(windowsOpen ? Esp32Response::WINDOWS_OPENED : Esp32Response::WINDOWS_CLOSED);
+            }
             break;
         case ClientCommand::LOCK_DOORS:
             lock();
@@ -413,6 +484,15 @@ class MyCallbacks : public BLECharacteristicCallbacks
             break;
         case ClientCommand::START_ENGINE:
             startEngine();
+            break;
+        case ClientCommand::STOP_ENGINE:
+            stopEngine();
+            break;
+        case ClientCommand::OPEN_WINDOWS:
+            openWindows();
+            break;
+        case ClientCommand::CLOSE_WINDOWS:
+            closeWindows();
             break;
         case ClientCommand::PROXIMITY_KEY_ON:
             enableProxKey();

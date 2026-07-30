@@ -18,10 +18,10 @@ class WidgetService {
   static int selectedVehicleIndex = 0;
 
   /// In-flight widget button commands, keyed by MAC → set of action keys
-  /// ('doors', 'trunk'). Drives the loading spinner on the home-screen widget,
-  /// mirroring the in-app buttons. Doors clear on the ESP's LOCKED/UNLOCKED
-  /// confirmation; trunk clears when the command write completes; both have a
-  /// safety timeout so the spinner can never spin forever.
+  /// ('doors', 'trunk', 'engine', 'windows'). Drives the loading spinner on the
+  /// home-screen widget, mirroring the in-app buttons. Doors, engine and windows
+  /// clear on the ESP's state confirmation; trunk clears when the command write
+  /// completes; all have a safety timeout so the spinner can never spin forever.
   static const Duration _pendingTimeout = Duration(seconds: 10);
   static final Map<String, Set<String>> _pendingActions = {};
   static final Map<String, Timer> _pendingTimers = {};
@@ -76,12 +76,18 @@ class WidgetService {
       return;
     }
 
-    // Any lock-state confirmation clears the doors spinner for that vehicle.
+    // Any state confirmation clears the matching spinner for that vehicle.
     if (command == Esp32Response.LOCKED ||
         command == Esp32Response.UNLOCKED ||
         command == Esp32Response.PROXIMITY_LOCKED ||
         command == Esp32Response.PROXIMITY_UNLOCKED) {
       _clearPending(macAddress, 'doors');
+    } else if (command == Esp32Response.ENGINE_STARTED ||
+        command == Esp32Response.ENGINE_STOPPED) {
+      _clearPending(macAddress, 'engine');
+    } else if (command == Esp32Response.WINDOWS_OPENED ||
+        command == Esp32Response.WINDOWS_CLOSED) {
+      _clearPending(macAddress, 'windows');
     }
 
     // Lock state is read straight from the authoritative BackgroundVehicle in
@@ -193,6 +199,9 @@ class WidgetService {
       case 'unlock':
       case 'open_trunk':
       case 'start_engine':
+      case 'stop_engine':
+      case 'open_windows':
+      case 'close_windows':
         BleBackgroundService.sendWidgetAction(macAddress, actionType);
         break;
       default:
@@ -206,13 +215,15 @@ class WidgetService {
       await HomeWidget.saveWidgetData<String>('currentVehicle', 'none');
     } else {
       final currentVehicle = connectedVehicles[selectedVehicleIndex];
-      // Read lock/engine state from the authoritative BackgroundVehicle instead
-      // of the local (reset-on-reload) copy, so the widget can't get stuck on
-      // the doorsLocked=true default after a reconnect.
+      // Read lock/engine/window state from the authoritative BackgroundVehicle
+      // instead of the local (reset-on-reload) copy, so the widget can't get
+      // stuck on the doorsLocked=true default after a reconnect.
       final authoritative =
           _authoritativeVehicle(currentVehicle.device.macAddress);
       final isLocked = authoritative?.doorsLocked ?? currentVehicle.doorsLocked;
       final engineOn = authoritative?.engineOn ?? currentVehicle.engineOn;
+      final windowsOpen =
+          authoritative?.windowsOpen ?? currentVehicle.windowsOpen;
 
       await HomeWidget.saveWidgetData<String>(
           'currentVehicle',
@@ -223,12 +234,19 @@ class WidgetService {
                 currentVehicle.data.features.contains(Feature.engine),
             'hasTrunkUnlock':
                 currentVehicle.data.features.contains(Feature.trunkOpen),
+            'hasWindows':
+                currentVehicle.data.features.contains(Feature.windows),
             'isLocked': isLocked,
             'engineOn': engineOn,
+            'windowsOpen': windowsOpen,
             'pendingDoors':
                 _isPending(currentVehicle.device.macAddress, 'doors'),
             'pendingTrunk':
                 _isPending(currentVehicle.device.macAddress, 'trunk'),
+            'pendingEngine':
+                _isPending(currentVehicle.device.macAddress, 'engine'),
+            'pendingWindows':
+                _isPending(currentVehicle.device.macAddress, 'windows'),
             'multipleConnectedDevices': connectedVehicles.length > 1
           }));
     }

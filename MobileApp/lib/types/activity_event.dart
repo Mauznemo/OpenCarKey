@@ -8,6 +8,8 @@ enum ActivityEventType {
   userOpenedTrunk,
   userStartedEngine,
   userStoppedEngine,
+  userOpenedWindows,
+  userClosedWindows,
   proximityLocked,
   proximityUnlocked,
   authenticationFailed,
@@ -30,6 +32,10 @@ extension ActivityEventTypeExtension on ActivityEventType {
         return 'User Started Engine';
       case ActivityEventType.userStoppedEngine:
         return 'User Stopped Engine';
+      case ActivityEventType.userOpenedWindows:
+        return 'User Opened Windows';
+      case ActivityEventType.userClosedWindows:
+        return 'User Closed Windows';
       case ActivityEventType.proximityLocked:
         return 'Vehicle Proximity Locked';
       case ActivityEventType.proximityUnlocked:
@@ -54,7 +60,11 @@ extension ActivityEventTypeExtension on ActivityEventType {
       case ActivityEventType.userStartedEngine:
         return 'power_settings_new';
       case ActivityEventType.userStoppedEngine:
-        return 'power_off';
+        return 'do_disturb_alt';
+      case ActivityEventType.userOpenedWindows:
+        return 'keyboard_double_arrow_down';
+      case ActivityEventType.userClosedWindows:
+        return 'keyboard_double_arrow_up';
       case ActivityEventType.proximityLocked:
         return 'sensors';
       case ActivityEventType.proximityUnlocked:

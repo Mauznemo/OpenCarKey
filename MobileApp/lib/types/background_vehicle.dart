@@ -12,6 +12,7 @@ class BackgroundVehicle {
   bool doorsLocked;
   bool trunkLocked;
   bool engineOn;
+  bool windowsOpen;
 
   BackgroundVehicle({
     required this.device,
@@ -19,5 +20,6 @@ class BackgroundVehicle {
     this.doorsLocked = true,
     this.trunkLocked = true,
     this.engineOn = false,
+    this.windowsOpen = false,
   });
 }

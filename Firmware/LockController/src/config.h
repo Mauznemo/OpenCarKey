@@ -2,6 +2,9 @@
 #include "types/features.h"
 
 // Features supported by the vehicle
+// Add `| Feature::Engine` and/or `| Feature::Windows` once you wired up the
+// matching relays and callbacks (onEngineStarted, onEngineStopped,
+// onWindowsOpened, onWindowsClosed) in main.cpp
 static const Feature SUPPORTED_FEATURES =
     Feature::DoorsLock | Feature::TrunkOpen;
 

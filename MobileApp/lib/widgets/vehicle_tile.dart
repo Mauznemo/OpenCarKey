@@ -27,6 +27,7 @@ class _VehicleTileState extends ConsumerState<VehicleTile> {
   bool _doorsCommandSending = false;
   bool _trunkCommandSending = false;
   bool _engineCommandSending = false;
+  bool _windowsCommandSending = false;
 
   Widget _buildLoadingSpinner() {
     return SizedBox(
@@ -153,8 +154,8 @@ class _VehicleTileState extends ConsumerState<VehicleTile> {
                     if (!settingsState.showMacAddress)
                       const SizedBox(height: 10),
                     const SizedBox(height: 10),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Wrap(
+                      runSpacing: 8,
                       children: [
                         _ActionButton(
                           icon: _doorsCommandSending
@@ -219,10 +220,65 @@ class _VehicleTileState extends ConsumerState<VehicleTile> {
                           Feature.engine,
                         ))
                           _ActionButton(
-                            icon: const Icon(Icons.restart_alt, size: 30),
+                            icon: _engineCommandSending
+                                ? _buildLoadingSpinner()
+                                : Icon(
+                                    widget.vehicle.engineOn
+                                        ? Icons.do_disturb_alt_outlined
+                                        : Icons.power_settings_new,
+                                    size: 30,
+                                  ),
                             onPressed: widget.vehicle.device.isConnected
-                                ? () {
-                                    // TODO: Implement engine start
+                                ? () async {
+                                    if (_engineCommandSending) return;
+
+                                    setState(() {
+                                      _engineCommandSending = true;
+                                    });
+
+                                    await BleBackgroundService.sendCommand(
+                                      widget.vehicle.device,
+                                      widget.vehicle.engineOn
+                                          ? ClientCommand.STOP_ENGINE
+                                          : ClientCommand.START_ENGINE,
+                                    );
+
+                                    setState(() {
+                                      _engineCommandSending = false;
+                                    });
+                                  }
+                                : null,
+                          ),
+                        if (widget.vehicle.data.features.contains(
+                          Feature.windows,
+                        ))
+                          _ActionButton(
+                            icon: _windowsCommandSending
+                                ? _buildLoadingSpinner()
+                                : Icon(
+                                    widget.vehicle.windowsOpen
+                                        ? Icons.keyboard_double_arrow_up
+                                        : Icons.keyboard_double_arrow_down,
+                                    size: 30,
+                                  ),
+                            onPressed: widget.vehicle.device.isConnected
+                                ? () async {
+                                    if (_windowsCommandSending) return;
+
+                                    setState(() {
+                                      _windowsCommandSending = true;
+                                    });
+
+                                    await BleBackgroundService.sendCommand(
+                                      widget.vehicle.device,
+                                      widget.vehicle.windowsOpen
+                                          ? ClientCommand.CLOSE_WINDOWS
+                                          : ClientCommand.OPEN_WINDOWS,
+                                    );
+
+                                    setState(() {
+                                      _windowsCommandSending = false;
+                                    });
                                   }
                                 : null,
                           ),

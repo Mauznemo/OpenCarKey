@@ -109,4 +109,27 @@ class VehiclesNotifier extends _$VehiclesNotifier {
       }).toList(),
     );
   }
+
+  void setVehicleEngineOn(String macAddress, bool engineOn) {
+    state = state.copyWith(
+      vehicles: state.vehicles.map((vehicle) {
+        if (vehicle.data.macAddress == macAddress) {
+          return vehicle.copyWith(engineOn: engineOn); // return new instance
+        }
+        return vehicle;
+      }).toList(),
+    );
+  }
+
+  void setVehicleWindowsOpen(String macAddress, bool windowsOpen) {
+    state = state.copyWith(
+      vehicles: state.vehicles.map((vehicle) {
+        if (vehicle.data.macAddress == macAddress) {
+          return vehicle.copyWith(
+              windowsOpen: windowsOpen); // return new instance
+        }
+        return vehicle;
+      }).toList(),
+    );
+  }
 }

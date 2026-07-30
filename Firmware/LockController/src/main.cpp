@@ -16,6 +16,26 @@ void openTrunk()
   Serial.println("ut");
 }
 
+void startEngine()
+{
+  // Custom code to start the engine
+}
+
+void stopEngine()
+{
+  // Custom code to stop the engine
+}
+
+void openWindows()
+{
+  // Custom code to open the windows
+}
+
+void closeWindows()
+{
+  // Custom code to close the windows
+}
+
 void unlock(bool proximity)
 {
   digitalWrite(doorsRelayPin1, LOW);
@@ -53,6 +73,22 @@ void checkSerial()
     {
       openTrunk();
     }
+    else if (data == "se")
+    {
+      startEngine();
+    }
+    else if (data == "pe")
+    {
+      stopEngine();
+    }
+    else if (data == "ow")
+    {
+      openWindows();
+    }
+    else if (data == "cw")
+    {
+      closeWindows();
+    }
   }
 }
 
@@ -62,10 +98,16 @@ void setup()
   pinMode(doorsRelayPin1, OUTPUT);
   pinMode(doorsRelayPin2, OUTPUT);
   pinMode(trunkRelayPin1, OUTPUT);
+  pinMode(engineRelayPin1, OUTPUT);
+  pinMode(windowsRelayPin1, OUTPUT);
+  pinMode(windowsRelayPin2, OUTPUT);
 
   digitalWrite(doorsRelayPin1, HIGH); // You might need to swap high and low depending on if your relays are active low
   digitalWrite(doorsRelayPin2, HIGH);
   digitalWrite(trunkRelayPin1, HIGH);
+  digitalWrite(engineRelayPin1, HIGH);
+  digitalWrite(windowsRelayPin1, HIGH);
+  digitalWrite(windowsRelayPin2, HIGH);
 
   Serial.begin(115200);
 
@@ -74,6 +116,10 @@ void setup()
   onLocked = lock;
   onUnlocked = unlock;
   onTrunkOpened = openTrunk;
+  onEngineStarted = startEngine;
+  onEngineStopped = stopEngine;
+  onWindowsOpened = openWindows;
+  onWindowsClosed = closeWindows;
 
   if (DEBUG_MODE)
     Serial.println("BLE Lock Controller Ready");

@@ -15,15 +15,15 @@ final vehiclesProvider = VehiclesNotifierProvider._();
 final class VehiclesNotifierProvider
     extends $NotifierProvider<VehiclesNotifier, VehiclesState> {
   VehiclesNotifierProvider._()
-      : super(
-          from: null,
-          argument: null,
-          retry: null,
-          name: r'vehiclesProvider',
-          isAutoDispose: true,
-          dependencies: null,
-          $allTransitiveDependencies: null,
-        );
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'vehiclesProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
 
   @override
   String debugGetCreateSourceHash() => _$vehiclesNotifierHash();
@@ -41,7 +41,7 @@ final class VehiclesNotifierProvider
   }
 }
 
-String _$vehiclesNotifierHash() => r'5b7a8ae5272e12247aaa762c974da436bbff161b';
+String _$vehiclesNotifierHash() => r'2e81417a876d7ca0a4887c821739a265282d06ac';
 
 abstract class _$VehiclesNotifier extends $Notifier<VehiclesState> {
   VehiclesState build();
@@ -49,11 +49,14 @@ abstract class _$VehiclesNotifier extends $Notifier<VehiclesState> {
   @override
   void runBuild() {
     final ref = this.ref as $Ref<VehiclesState, VehiclesState>;
-    final element = ref.element as $ClassProviderElement<
-        AnyNotifier<VehiclesState, VehiclesState>,
-        VehiclesState,
-        Object?,
-        Object?>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<VehiclesState, VehiclesState>,
+              VehiclesState,
+              Object?,
+              Object?
+            >;
     element.handleCreate(ref, build);
   }
 }

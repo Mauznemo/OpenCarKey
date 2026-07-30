@@ -58,7 +58,7 @@ class BleTaskHandler extends TaskHandler {
 @pragma('vm:entry-point')
 class BleBackgroundService {
   // ignore: constant_identifier_names
-  static const PROTOCOL_VERSION = 'V3';
+  static const PROTOCOL_VERSION = 'V4';
 
   static List<BackgroundVehicle> vehicles = [];
   static final ValueNotifier<Esp32ResponseDate?> _onMessageReceived =
@@ -849,6 +849,30 @@ class BleBackgroundService {
       );
 
       changedVehicle?.doorsLocked = false;
+    } else if (espResponseData.command == Esp32Response.ENGINE_STARTED) {
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
+
+      changedVehicle?.engineOn = true;
+    } else if (espResponseData.command == Esp32Response.ENGINE_STOPPED) {
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
+
+      changedVehicle?.engineOn = false;
+    } else if (espResponseData.command == Esp32Response.WINDOWS_OPENED) {
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
+
+      changedVehicle?.windowsOpen = true;
+    } else if (espResponseData.command == Esp32Response.WINDOWS_CLOSED) {
+      BackgroundVehicle? changedVehicle = _getChangedVehicle(
+        espResponseData.macAddress,
+      );
+
+      changedVehicle?.windowsOpen = false;
     }
   }
 
@@ -1099,7 +1123,26 @@ class BleBackgroundService {
         }
         break;
       case 'start_engine':
-        //TODO: Implement engine start
+      case 'stop_engine':
+        // Spinner cleared by WidgetService.processMessage on the ESP's
+        // ENGINE_STARTED/ENGINE_STOPPED confirmation (or the safety timeout).
+        WidgetService.setPending(macAddress, 'engine');
+        final engineCommand = action == 'start_engine'
+            ? ClientCommand.START_ENGINE
+            : ClientCommand.STOP_ENGINE;
+        await BleService.sendCommand(device, engineCommand);
+        ActivityService.instance.logFromCommand(engineCommand, vehicle?.data);
+        break;
+      case 'open_windows':
+      case 'close_windows':
+        // Spinner cleared by WidgetService.processMessage on the ESP's
+        // WINDOWS_OPENED/WINDOWS_CLOSED confirmation (or the safety timeout).
+        WidgetService.setPending(macAddress, 'windows');
+        final windowsCommand = action == 'open_windows'
+            ? ClientCommand.OPEN_WINDOWS
+            : ClientCommand.CLOSE_WINDOWS;
+        await BleService.sendCommand(device, windowsCommand);
+        ActivityService.instance.logFromCommand(windowsCommand, vehicle?.data);
         break;
     }
   }
