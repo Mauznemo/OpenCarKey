@@ -5,6 +5,10 @@ import 'vehicle_data.dart';
 class BackgroundVehicle {
   BluetoothDevice device;
   VehicleData data;
+  // Cached ffe1 write characteristic for the current connection. Set on connect,
+  // cleared on disconnect, so sendCommand can skip re-negotiating MTU and
+  // rediscovering services on every command.
+  BluetoothCharacteristic? characteristic;
   bool doorsLocked;
   bool trunkLocked;
   bool engineOn;
