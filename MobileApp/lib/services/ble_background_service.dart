@@ -990,7 +990,7 @@ class BleBackgroundService {
 
       case 'reload_vehicles':
         await VehicleStorage.reloadPrefs();
-        BleService.reloadPrefs();
+        await BleService.reloadPrefs();
         _getVehicles();
         break;
 

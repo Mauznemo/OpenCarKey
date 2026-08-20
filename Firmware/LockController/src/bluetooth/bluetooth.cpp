@@ -27,6 +27,9 @@ esp_bd_addr_t peerAddress;
 uint8_t sharedSecret[32];
 uint32_t counter = 0;
 
+// How many counters ahead of the stored one are still accepted.
+static const uint32_t COUNTER_WINDOW = 64;
+
 void (*onConnected)() = nullptr;
 void (*onDisconnected)() = nullptr;
 void (*onLocked)(bool proximity) = nullptr;
@@ -424,9 +427,13 @@ class MyCallbacks : public BLECharacteristicCallbacks
             }
         }
 
-        // Verify HMAC with a window of 10 counters to handle small desyncs
+        // Verify HMAC with a window of counters to handle small desyncs. The
+        // client can skip counters (a BLE write that fails locally may or may
+        // not have arrived here, so it never reuses one), which is what this
+        // window absorbs. Counters below the current one stay rejected, so
+        // replay protection is unaffected by the window size.
         bool valid = false;
-        for (int i = 0; i < 10; i++)
+        for (uint32_t i = 0; i < COUNTER_WINDOW; i++)
         {
             if (verifyHMAC(counter + i, commandByte[0], receivedHmac))
             {
@@ -440,7 +447,7 @@ class MyCallbacks : public BLECharacteristicCallbacks
         if (!valid)
         {
             if (DEBUG_MODE)
-                Serial.println("Received invalid HMAC. Tested counters: " + String(counter) + "-" + String(counter + 10));
+                Serial.println("Received invalid HMAC. Tested counters: " + String(counter) + "-" + String(counter + COUNTER_WINDOW - 1));
             sendToClient(Esp32Response::INVALID_HMAC);
             return;
         }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -15,6 +16,20 @@ import '../utils/esp32_response_parser.dart';
 
 class BleService {
   static SharedPreferences? _prefs;
+
+  /// Last rolling code counter handed out per device, kept in memory so it can
+  /// never go backwards inside this isolate. SharedPreferences is only the
+  /// backup across restarts: [reloadPrefs] (and the prefs reloads done
+  /// elsewhere in the app) replace the whole prefs cache with the on-disk
+  /// snapshot, which can be older than a counter that was just handed out, and
+  /// a reused counter is seen as a replay by the firmware.
+  static final Map<String, int> _counters = {};
+
+  /// Serializes [sendCommand] per device, so counters are allocated and written
+  /// in the same order. Two commands sent at the same time (e.g. a user action
+  /// while the post-connect sequence is still running) could otherwise reach
+  /// the firmware out of order, and the lower counter is rejected.
+  static final Map<String, Future<void>> _sendQueues = {};
 
   static Future<void> requestBluetoothPermissions() async {
     if (await Permission.bluetoothScan.request().isGranted &&
@@ -87,8 +102,30 @@ class BleService {
     }
   }
 
-  static void reloadPrefs() async {
+  static Future<void> reloadPrefs() async {
     await _prefs?.reload();
+
+    // Forget counters of vehicles that are gone (removed in the main isolate,
+    // which also deletes their counter), so re-adding one starts from scratch.
+    _counters.removeWhere((macAddress, _) =>
+        !(_prefs?.containsKey(_counterKey(macAddress)) ?? true));
+  }
+
+  static String _counterKey(String macAddress) => 'counter_$macAddress';
+
+  /// Returns the next rolling code counter for [macAddress] and persists it.
+  ///
+  /// Counters are never reused: the firmware accepts a counter at or ahead of
+  /// its own (within a window) and treats everything below as a replay.
+  /// Skipping a counter is harmless, handing the same one out twice is not.
+  static Future<int> _nextCounter(
+      SharedPreferences prefs, String macAddress) async {
+    final key = _counterKey(macAddress);
+    final counter =
+        max(prefs.getInt(key) ?? -1, _counters[macAddress] ?? -1) + 1;
+    _counters[macAddress] = counter;
+    await prefs.setInt(key, counter);
+    return counter;
   }
 
   static Future<SharedPreferences> _getPrefs() async {
@@ -125,6 +162,19 @@ class BleService {
   /// - [additionalData] Additional data to send with the command (MAX 12 Bytes!).
   static Future<BluetoothCharacteristic?> sendCommand(
       BluetoothDevice device, ClientCommand command,
+      {Uint8List? additionalData}) {
+    // Queue behind whatever is already being sent to this device so the
+    // rolling codes reach the firmware in the order they were allocated.
+    final macAddress = device.remoteId.str;
+    final previous = _sendQueues[macAddress] ?? Future.value();
+    final result = previous.then(
+        (_) => _sendCommand(device, command, additionalData: additionalData));
+    _sendQueues[macAddress] = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  static Future<BluetoothCharacteristic?> _sendCommand(
+      BluetoothDevice device, ClientCommand command,
       {Uint8List? additionalData}) async {
     try {
       if (!device.isConnected) {
@@ -158,10 +208,7 @@ class BleService {
         return null;
       }
 
-      var counter = prefs.getInt('counter_${device.remoteId.str}') ?? 0;
-      counter++;
-      prefs.setInt('counter_${device.remoteId.str}', counter);
-      print('updated counter: counter_${device.remoteId.str}');
+      final counter = await _nextCounter(prefs, device.remoteId.str);
       final hmac = generateHmac(counter, command, sharedSecret);
       payloadBytes.addAll(hmac);
 
@@ -187,10 +234,12 @@ class BleService {
       try {
         await characteristic.write(Uint8List.fromList(payloadBytes));
       } catch (e) {
-        print('Error writing to characteristic (reverting counter): $e');
-        var counter = prefs.getInt('counter_${device.remoteId.str}') ?? 0;
-        counter--;
-        prefs.setInt('counter_${device.remoteId.str}', counter);
+        // The counter is deliberately not rolled back here: a write can fail
+        // locally (timeout, link drop) after the firmware already received and
+        // consumed it, and reusing that counter looks like a replay, which is
+        // answered with INVALID_HMAC. Skipping one is harmless instead, the
+        // firmware's acceptance window covers it.
+        print('Error writing to characteristic: $e');
         return null;
       }
 
