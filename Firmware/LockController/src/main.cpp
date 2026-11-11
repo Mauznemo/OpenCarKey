@@ -7,6 +7,9 @@
 const int doorsRelayPin1 = 25;
 const int doorsRelayPin2 = 26;
 const int trunkRelayPin1 = 27;
+const int engineRelayPin1 = 33;
+const int windowsRelayPin1 = 32;
+const int windowsRelayPin2 = 13;
 
 void openTrunk()
 {
@@ -127,6 +130,8 @@ void setup()
 
 void loop()
 {
-  checkSerial();
+  // Serial commands are only for testing the relays, they skip all authentication
+  if (DEBUG_MODE)
+    checkSerial();
   bluetoothLoop();
 }

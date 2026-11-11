@@ -58,7 +58,7 @@ class BleTaskHandler extends TaskHandler {
 @pragma('vm:entry-point')
 class BleBackgroundService {
   // ignore: constant_identifier_names
-  static const PROTOCOL_VERSION = 'V4';
+  static const PROTOCOL_VERSION = 'V5';
 
   static List<BackgroundVehicle> vehicles = [];
   static final ValueNotifier<Esp32ResponseDate?> _onMessageReceived =

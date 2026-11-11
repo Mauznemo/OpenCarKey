@@ -5,6 +5,7 @@ import '../services/vehicle_service.dart';
 import '../models/ble_device.dart';
 import '../types/features.dart';
 import '../types/vehicle_data.dart';
+import '../utils/rolling_code.dart';
 import '../widgets/vehicle_image_picker.dart';
 import 'scan_dialog.dart';
 
@@ -61,7 +62,7 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
 
     if (connectedDevice == null) return;
 
-    final sharedSecret = BleService.generateSharedSecret(
+    final sharedSecret = generateSharedSecret(
       _passwordController.text.trim(),
     );
 
@@ -186,12 +187,7 @@ class _AddVehicleBottomSheetState extends State<AddVehicleBottomSheet> {
                                   .surfaceContainerHighest
                                   .withAlpha(66),
                             ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Please enter a password';
-                              }
-                              return null;
-                            },
+                            validator: validatePassword,
                           ),
 
                           SizedBox(height: 16),

@@ -4,7 +4,7 @@ import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../types/ble_commands.dart';
 import 'ble_background_service.dart';
 import '../utils/esp32_response_parser.dart';
+import '../utils/rolling_code.dart';
 
 class BleService {
   static SharedPreferences? _prefs;
@@ -118,7 +119,8 @@ class BleService {
   /// Counters are never reused: the firmware accepts a counter at or ahead of
   /// its own (within a window) and treats everything below as a replay.
   /// Skipping a counter is harmless, handing the same one out twice is not.
-  static Future<int> _nextCounter(
+  @visibleForTesting
+  static Future<int> nextCounter(
       SharedPreferences prefs, String macAddress) async {
     final key = _counterKey(macAddress);
     final counter =
@@ -128,38 +130,20 @@ class BleService {
     return counter;
   }
 
+  /// Forgets the in-memory counters, like an app restart does.
+  @visibleForTesting
+  static void clearCounterCacheForTesting() => _counters.clear();
+
   static Future<SharedPreferences> _getPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
     return _prefs!;
   }
 
-  /// Generate HMAC-SHA256 for a counter and 1-byte command
-  static Uint8List generateHmac(
-      int counter, ClientCommand command, Uint8List sharedSecret) {
-    final counterBytes = Uint8List(4)
-      ..buffer.asByteData().setUint32(0, counter, Endian.little);
-    final commandBytes = Uint8List(1)..[0] = command.value;
-    final data = Uint8List.fromList([...counterBytes, ...commandBytes]);
-    final hmac = Hmac(sha256, sharedSecret);
-    return Uint8List.fromList(hmac.convert(data).bytes);
-  }
-
-  static Uint8List generateSharedSecret(String password) {
-    String cleanedPassword = password.replaceAll('\u0000', '');
-    final inputBytes = utf8.encode(cleanedPassword);
-    final digest = sha256.convert(inputBytes);
-    final key = Uint8List.fromList(digest.bytes);
-
-    print(
-        'Generated 32-byte key (from: $cleanedPassword): ${key.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
-
-    return key;
-  }
-
   /// Send a command to a device.
   /// - [device] The device to send the command to.
   /// - [command] The command to send.
-  /// - [additionalData] Additional data to send with the command (MAX 12 Bytes!).
+  /// - [additionalData] Additional data to send with the command (at most
+  ///   [maxAdditionalDataLength] bytes, more throws).
   static Future<BluetoothCharacteristic?> sendCommand(
       BluetoothDevice device, ClientCommand command,
       {Uint8List? additionalData}) {
@@ -199,8 +183,6 @@ class BleService {
         vehicle.characteristic = characteristic;
       }
 
-      final List<int> payloadBytes = <int>[];
-
       final prefs = await _getPrefs();
 
       if (characteristic.device.isDisconnected) {
@@ -208,31 +190,23 @@ class BleService {
         return null;
       }
 
-      final counter = await _nextCounter(prefs, device.remoteId.str);
-      final hmac = generateHmac(counter, command, sharedSecret);
-      payloadBytes.addAll(hmac);
-
-      payloadBytes.add(command.value);
-
-      if (additionalData != null) {
-        int dataLength = additionalData.length;
-
-        if (dataLength > 12) {
-          print('Additional data is too long, truncating to 12 bytes.');
-          dataLength = 12;
-        }
-
-        payloadBytes.add(dataLength);
-        payloadBytes.addAll(additionalData.sublist(0, dataLength));
+      if (additionalData != null &&
+          additionalData.length > maxAdditionalDataLength) {
+        throw ArgumentError.value(additionalData.length, 'additionalData',
+            'At most $maxAdditionalDataLength bytes are allowed');
       }
 
+      final counter = await nextCounter(prefs, device.remoteId.str);
+      final payload = buildCommandPayload(counter, command, sharedSecret,
+          additionalData: additionalData);
+
+      // Neither the secret nor the payload is logged: a payload whose write
+      // failed is still valid for the vehicle until a newer counter arrives.
       print(
-          "Sending command: 0x${command.value.toRadixString(16)} counter at $counter with payload: $payloadBytes");
-      print(
-          'Shared secret: ${sharedSecret.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
+          "Sending command: 0x${command.value.toRadixString(16)} counter at $counter");
 
       try {
-        await characteristic.write(Uint8List.fromList(payloadBytes));
+        await characteristic.write(payload);
       } catch (e) {
         // The counter is deliberately not rolled back here: a write can fail
         // locally (timeout, link drop) after the firmware already received and

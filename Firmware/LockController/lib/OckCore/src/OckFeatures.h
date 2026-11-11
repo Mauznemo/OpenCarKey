@@ -21,3 +21,9 @@ inline Feature operator&(Feature a, Feature b)
 {
     return static_cast<Feature>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
 }
+
+/// @brief True if `feature` is part of `supported` (Feature::None is always supported)
+inline bool hasFeature(Feature supported, Feature feature)
+{
+    return (supported & feature) == feature;
+}

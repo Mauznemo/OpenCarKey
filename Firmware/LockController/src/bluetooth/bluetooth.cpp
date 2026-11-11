@@ -5,30 +5,31 @@
 #include <BLE2902.h>
 #include "bluetooth.h"
 #include "esp_gap_ble_api.h"
-#include "commands.h"
 #include <mbedtls/sha256.h>
 #include <mbedtls/md.h>
+#include <nvs.h>
 #include <SPIFFS.h>
 #include <config.h>
+#include <OckAuth.h>
+#include <OckCommandProcessor.h>
+#include <OckPasswordPolicy.h>
+#include <OckProtocol.h>
+#include <OckProximity.h>
+
+static_assert(ock::isPasswordLongEnough(PASSWORD),
+              "PASSWORD in config.h must be at least 12 characters long. Anyone in Bluetooth range can "
+              "record a command and try to guess the password offline, so pick something long and unique.");
 
 #define BLE_MTU_SIZE 64
 // BLE service and characteristic UUIDs
 #define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
-#define RSSI_SAMPLES 5 // Number of samples for smoothing
-
-const std::string PROTOCOL_VERSION = "V4";
+const std::string PROTOCOL_VERSION = ock::PROTOCOL_VERSION;
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
 esp_bd_addr_t peerAddress;
-
-uint8_t sharedSecret[32];
-uint32_t counter = 0;
-
-// How many counters ahead of the stored one are still accepted.
-static const uint32_t COUNTER_WINDOW = 64;
 
 void (*onConnected)() = nullptr;
 void (*onDisconnected)() = nullptr;
@@ -59,19 +60,113 @@ bool connParamsPending = false;
 const int bootButtonPin = 0;
 unsigned long bootButtonPressStart = 0;
 bool isBootButtonPressed = false;
+bool counterResetDone = false;
 
 float triggerRssiStrength = 0;
 float releaseRssiStrength = 0;
-float lastRssiStrength = 0;
 int rssiDeadZone = 4;
-int rssiBuffer[RSSI_SAMPLES] = {0};
-int rssiIndex = 0;
-bool bufferFilled = false;
+ock::RssiFilter rssiFilter;
 unsigned long previousRssiMillis = 0;
 const long rssiInterval = 500;
 bool sendRssi = false;
 float proximityCooldown = 1; // in min
 unsigned long previousProximityMillis = 0;
+
+namespace
+{
+    const char *NVS_NAMESPACE = "ock";
+    const char *NVS_COUNTER_KEY = "counter";
+    const char *LEGACY_COUNTER_FILE = "/counter";
+
+    bool hmacSha256(const uint8_t *key, size_t keyLength, const uint8_t *message, size_t messageLength, uint8_t *out)
+    {
+        const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+        return info != nullptr && mbedtls_md_hmac(info, key, keyLength, message, messageLength, out) == 0;
+    }
+
+    /// Stores the rolling code counter in NVS. NVS writes are power-loss safe (the old value
+    /// stays valid until the new one is fully written) and wear leveled, so a brown-out while
+    /// cranking the engine can't reset the counter to 0 and make recorded commands valid again.
+    class NvsCounterStore : public ock::CounterStore
+    {
+    public:
+        bool load(uint32_t &counter) override
+        {
+            uint32_t stored = 0;
+            if (!readNvs(stored))
+                return false;
+
+            // Counters used to be kept in a SPIFFS file, carry them over so an update
+            // doesn't start from 0 again.
+            uint32_t legacy = 0;
+            if (readLegacyCounter(legacy))
+            {
+                if (legacy > stored)
+                {
+                    if (!save(legacy))
+                        return false;
+                    stored = legacy;
+                }
+                SPIFFS.remove(LEGACY_COUNTER_FILE);
+                SPIFFS.end();
+            }
+
+            counter = stored;
+            return true;
+        }
+
+        bool save(uint32_t counter) override
+        {
+            nvs_handle_t handle;
+            if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK)
+                return false;
+            const bool ok = nvs_set_u32(handle, NVS_COUNTER_KEY, counter) == ESP_OK && nvs_commit(handle) == ESP_OK;
+            nvs_close(handle);
+            return ok;
+        }
+
+    private:
+        bool readNvs(uint32_t &counter)
+        {
+            nvs_handle_t handle;
+            if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK)
+                return false;
+            const esp_err_t err = nvs_get_u32(handle, NVS_COUNTER_KEY, &counter);
+            nvs_close(handle);
+
+            if (err == ESP_ERR_NVS_NOT_FOUND)
+            {
+                counter = 0;
+                return true;
+            }
+            return err == ESP_OK;
+        }
+
+        /// Leaves SPIFFS mounted if the file exists, so load() can remove it
+        bool readLegacyCounter(uint32_t &counter)
+        {
+            if (!SPIFFS.begin(false))
+                return false;
+            if (!SPIFFS.exists(LEGACY_COUNTER_FILE))
+            {
+                SPIFFS.end();
+                return false;
+            }
+
+            File file = SPIFFS.open(LEGACY_COUNTER_FILE, "r");
+            String content = file ? file.readString() : String();
+            file.close();
+
+            char *end = nullptr;
+            const unsigned long value = strtoul(content.c_str(), &end, 10);
+            counter = (end != content.c_str()) ? static_cast<uint32_t>(value) : 0;
+            return true;
+        }
+    };
+
+    NvsCounterStore counterStore;
+    ock::RollingCodeVerifier verifier(hmacSha256, counterStore);
+}
 
 void sendToClient(Esp32Response responseCode, const uint8_t *data = nullptr, size_t dataLen = 0)
 {
@@ -121,11 +216,8 @@ namespace
 {
     void lock(bool proximity = false, bool ignoreCooldown = false)
     {
-        if (proximity &&
-            previousProximityMillis != 0 &&
-            proximityCooldown != 0 &&
-            !ignoreCooldown &&
-            ((millis() - previousProximityMillis) < (proximityCooldown * 60000)))
+        if (proximity && !ignoreCooldown &&
+            ock::proximityCooldownActive(millis(), previousProximityMillis, proximityCooldown))
         {
             return;
         }
@@ -149,12 +241,8 @@ namespace
 
     void unlock(bool proximity = false, bool ignoreCooldown = false)
     {
-
-        if (proximity &&
-            previousProximityMillis != 0 &&
-            proximityCooldown != 0 &&
-            !ignoreCooldown &&
-            ((millis() - previousProximityMillis) < (proximityCooldown * 60000)))
+        if (proximity && !ignoreCooldown &&
+            ock::proximityCooldownActive(millis(), previousProximityMillis, proximityCooldown))
         {
             return;
         }
@@ -240,18 +328,14 @@ namespace
 
     void enableProxKey()
     {
+        // Readings taken while the proximity key was off can be from somewhere else entirely
+        rssiFilter.reset();
         autoLocking = true;
     }
 
     void disableProxKey()
     {
         autoLocking = false;
-    }
-
-    float calculateReleaseRssi(int triggerRssiStrength, float pathLossExponent = 3.0, float reduction = 5.0)
-    {
-        float deltaRssi = -10 * pathLossExponent * log10((reduction + 1) / 1);
-        return triggerRssiStrength + deltaRssi;
     }
 }
 
@@ -262,6 +346,8 @@ class MyServerCallbacks : public BLEServerCallbacks
         if (DEBUG_MODE)
             Serial.println("Connected");
         memcpy(peerAddress, param->connect.remote_bda, sizeof(esp_bd_addr_t));
+        // Readings from the previous connection must never count for this one
+        rssiFilter.reset();
         deviceConnected = true;
 
         // Request low-power connection parameters, but delayed (see bluetoothLoop).
@@ -277,6 +363,7 @@ class MyServerCallbacks : public BLEServerCallbacks
         if (DEBUG_MODE)
             Serial.println("Disconnected");
         deviceConnected = false;
+        rssiFilter.reset();
         // Cancel any pending conn-param update so it can't fire against a new peer.
         connParamsPending = false;
         if (autoLocking && !isLocked) // Only true if disconnected before auto locking
@@ -292,176 +379,46 @@ class MyServerCallbacks : public BLEServerCallbacks
     }
 };
 
-void writeCounter(uint32_t count)
-{
-    File file = SPIFFS.open("/counter", "w"); // Using SPIFFS to avoid wearing flash sinc it has way more sectores
-    file.print(count);
-    file.close();
-}
-
-uint32_t readCounter()
-{
-    File file = SPIFFS.open("/counter", "r");
-    uint32_t count = file.parseInt();
-    file.close();
-    return count;
-}
-
-// Generate HMAC-SHA256 for a counter and 1-byte command
-void generateHMAC(uint32_t counter, uint8_t command, uint8_t *hmac)
-{
-    mbedtls_md_context_t ctx;
-    mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1); // 1 = HMAC
-    mbedtls_md_hmac_starts(&ctx, sharedSecret, 32);
-    mbedtls_md_hmac_update(&ctx, (const uint8_t *)&counter, sizeof(counter));
-    mbedtls_md_hmac_update(&ctx, &command, 1);
-    mbedtls_md_hmac_finish(&ctx, hmac);
-    mbedtls_md_free(&ctx);
-}
-
-// Verify HMAC-SHA256 for a counter and 1-byte command
-bool verifyHMAC(uint32_t counter, uint8_t command, const uint8_t *received_hmac)
-{
-    uint8_t expected_hmac[32];
-    generateHMAC(counter, command, expected_hmac);
-    return memcmp(received_hmac, expected_hmac, 32) == 0;
-}
-
-float parseFloat(const uint8_t *data)
-{
-    if (data == nullptr)
-        return 0.0f;
-    float value;
-    memcpy(&value, data, sizeof(float));
-    return value;
-}
-
-int32_t parseInt32(const uint8_t *data)
-{
-    if (data == nullptr)
-        return 0;
-    int32_t value;
-    memcpy(&value, data, sizeof(int32_t));
-    return value;
-}
-
-int16_t parseInt16(const uint8_t *data)
-{
-    if (data == nullptr)
-        return 0;
-    int16_t value;
-    memcpy(&value, data, sizeof(int16_t));
-    return value;
-}
-
-uint8_t parseUint8(const uint8_t *data)
-{
-    if (data == nullptr)
-        return 0;
-    return data[0];
-}
-
-std::string parseString(const uint8_t *data, uint8_t length)
-{
-    if (data == nullptr || length == 0)
-        return "";
-    return std::string(reinterpret_cast<const char *>(data), length);
-}
-
-// Parse multiple floats (e.g., GPS coordinates)
-void parseFloats(const uint8_t *data, float *output, size_t count)
-{
-    if (data == nullptr || output == nullptr)
-        return;
-    for (size_t i = 0; i < count; i++)
-    {
-        memcpy(&output[i], data + (i * sizeof(float)), sizeof(float));
-    }
-}
-
 class MyCallbacks : public BLECharacteristicCallbacks
 {
     void onWrite(BLECharacteristic *pCharacteristic)
     {
         std::string value = pCharacteristic->getValue();
-        size_t length = value.length();
 
-        if (length == 0)
+        if (value.empty())
         {
             if (DEBUG_MODE)
                 Serial.println("Received empty value.");
             return;
         }
 
-        if (length < 33)
-        { // Minimum for HMAC + Command
-            Serial.println("Received malformed client command: too short.");
-            sendToClient(Esp32Response::INVALID_HMAC);
-            return;
-        }
+        // Every check (structure, HMAC + rolling code, feature, data) happens in here,
+        // see lib/OckCore and the tests in test/test_native.
+        const ock::CommandDecision decision = ock::processClientMessage(
+            verifier, SUPPORTED_FEATURES, reinterpret_cast<const uint8_t *>(value.data()), value.length());
+        const ClientCommand command = decision.command;
 
-        uint8_t receivedHmac[32];
-        memcpy(receivedHmac, value.data(), 32);
-
-        uint8_t commandByte[1];
-        memcpy(commandByte, value.data() + 32, 1);
-        ClientCommand command = static_cast<ClientCommand>(commandByte[0]);
-
-        uint8_t additionalLength = 0;
-        const uint8_t *additionalDataPtr = nullptr;
-
-        if (length > 33)
+        if (decision.status != ock::CommandStatus::Accepted)
         {
-            additionalLength = value.data()[33];
+            if (DEBUG_MODE || decision.status == ock::CommandStatus::StorageError)
+                Serial.printf("Rejected command %s (0x%02X): %s (counter: %u)\n",
+                              toString(command),
+                              static_cast<uint8_t>(command),
+                              ock::toString(decision.status),
+                              verifier.counter());
 
-            // Verify we have enough data
-            if (length >= 34 + additionalLength)
-            {
-                additionalDataPtr = reinterpret_cast<const uint8_t *>(value.data() + 34);
-            }
-            else
-            {
-                Serial.println("Malformed data: advertised length exceeds actual data.");
-                return;
-            }
-        }
-
-        // Verify HMAC with a window of counters to handle small desyncs. The
-        // client can skip counters (a BLE write that fails locally may or may
-        // not have arrived here, so it never reuses one), which is what this
-        // window absorbs. Counters below the current one stay rejected, so
-        // replay protection is unaffected by the window size.
-        bool valid = false;
-        for (uint32_t i = 0; i < COUNTER_WINDOW; i++)
-        {
-            if (verifyHMAC(counter + i, commandByte[0], receivedHmac))
-            {
-                valid = true;
-                counter = counter + i + 1;
-                writeCounter(counter);
-                break;
-            }
-        }
-
-        if (!valid)
-        {
-            if (DEBUG_MODE)
-                Serial.println("Received invalid HMAC. Tested counters: " + String(counter) + "-" + String(counter + COUNTER_WINDOW - 1));
-            sendToClient(Esp32Response::INVALID_HMAC);
+            if (ock::shouldReplyInvalidHmac(decision.status))
+                sendToClient(Esp32Response::INVALID_HMAC);
             return;
         }
 
         if (DEBUG_MODE)
-            Serial.printf("Received command: %s (0x%02X) with %d bytes of data\n",
-                          toString(command),
-                          static_cast<uint8_t>(command),
-                          additionalLength);
+            Serial.printf("Received command: %s (0x%02X)\n", toString(command), static_cast<uint8_t>(command));
 
         switch (command)
         {
         case ClientCommand::GET_VERSION:
-            sendToClientString(Esp32Response::VERSION, PROTOCOL_VERSION.c_str());
+            sendToClientString(Esp32Response::VERSION, PROTOCOL_VERSION);
             break;
         case ClientCommand::GET_DATA:
             // One notification per state the vehicle actually supports, with a
@@ -469,12 +426,12 @@ class MyCallbacks : public BLECharacteristicCallbacks
             // notified. States for unsupported features are not reported at all,
             // so the app doesn't show a state for a button it never renders.
             sendToClient(isLocked ? Esp32Response::LOCKED : Esp32Response::UNLOCKED);
-            if ((SUPPORTED_FEATURES & Feature::Engine) != Feature::None)
+            if (hasFeature(SUPPORTED_FEATURES, Feature::Engine))
             {
                 delay(20);
                 sendToClient(engineOn ? Esp32Response::ENGINE_STARTED : Esp32Response::ENGINE_STOPPED);
             }
-            if ((SUPPORTED_FEATURES & Feature::Windows) != Feature::None)
+            if (hasFeature(SUPPORTED_FEATURES, Feature::Windows))
             {
                 delay(20);
                 sendToClient(windowsOpen ? Esp32Response::WINDOWS_OPENED : Esp32Response::WINDOWS_CLOSED);
@@ -508,46 +465,25 @@ class MyCallbacks : public BLECharacteristicCallbacks
             disableProxKey();
             break;
         case ClientCommand::RSSI_TRIGGER:
-        {
-            if (additionalLength == 0)
-            {
-                if (DEBUG_MODE)
-                    Serial.println("No RSSI trigger data");
-                return;
-            }
-
-            float additionalDataFloats[2];
-            parseFloats(additionalDataPtr, additionalDataFloats, 2);
-
-            triggerRssiStrength = additionalDataFloats[0];
-            rssiDeadZone = additionalDataFloats[1];
-
-            releaseRssiStrength = calculateReleaseRssi(triggerRssiStrength);
+            // Already validated by processClientMessage
+            triggerRssiStrength = decision.values[0];
+            rssiDeadZone = static_cast<int>(decision.values[1]);
+            releaseRssiStrength = ock::calculateReleaseRssi(triggerRssiStrength);
 
             if (DEBUG_MODE)
             {
                 Serial.println("Trigger RSSI set: " + String(triggerRssiStrength));
                 Serial.println("Release RSSI set: " + String(releaseRssiStrength));
             }
-        }
-        break;
+            break;
         case ClientCommand::GET_RSSI:
             sendRssi = true;
             break;
         case ClientCommand::PROXIMITY_COOLDOWN:
-        {
-            if (additionalLength == 0)
-            {
-                if (DEBUG_MODE)
-                    Serial.println("No RSSI trigger data");
-                return;
-            }
-
-            proximityCooldown = parseFloat(additionalDataPtr);
+            proximityCooldown = decision.values[0];
             if (DEBUG_MODE)
                 Serial.println("Proximity cooldown set: " + String(proximityCooldown));
-        }
-        break;
+            break;
         case ClientCommand::GET_FEATURES:
         {
             uint32_t featuresValue = static_cast<uint32_t>(SUPPORTED_FEATURES);
@@ -566,21 +502,12 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     if (event == ESP_GAP_BLE_READ_RSSI_COMPLETE_EVT)
     {
-        int rawRSSI = param->read_rssi_cmpl.rssi;
+        // A reading that arrives after a disconnect belongs to the old connection
+        if (!deviceConnected)
+            return;
 
-        rssiBuffer[rssiIndex] = rawRSSI;
-        rssiIndex = (rssiIndex + 1) % RSSI_SAMPLES;
-
-        if (rssiIndex == 0)
-            bufferFilled = true;
-
-        int sum = 0;
-        int count = bufferFilled ? RSSI_SAMPLES : rssiIndex;
-        for (int i = 0; i < count; i++)
-        {
-            sum += rssiBuffer[i];
-        }
-        float avgRSSI = (float)sum / count;
+        rssiFilter.add(param->read_rssi_cmpl.rssi);
+        float avgRSSI = rssiFilter.average();
 
         if (sendRssi)
         {
@@ -588,24 +515,16 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
             sendRssi = false;
         }
 
-        if (!autoLocking || triggerRssiStrength == 0)
+        switch (ock::evaluateProximity(autoLocking, triggerRssiStrength, releaseRssiStrength, rssiFilter, isLocked))
         {
-            return;
-        }
-
-        if (avgRSSI < releaseRssiStrength)
-        {
-            if (!isLocked)
-            {
-                lock(true);
-            }
-        }
-        else if (avgRSSI > triggerRssiStrength)
-        {
-            if (isLocked)
-            {
-                unlock(true);
-            }
+        case ock::ProximityAction::Lock:
+            lock(true);
+            break;
+        case ock::ProximityAction::Unlock:
+            unlock(true);
+            break;
+        default:
+            break;
         }
     }
 }
@@ -630,29 +549,19 @@ std::string scrambleName(const std::string &name)
 
 void setupBluetooth()
 {
-    if (SPIFFS.begin(true))
-    {
-        counter = readCounter();
-    }
-    else if (DEBUG_MODE)
-    {
-        Serial.println("SPIFFS Mount Failed");
-    }
-
     pinMode(bootButtonPin, INPUT_PULLUP);
 
     // Generate 32-byte HMAC key
+    uint8_t sharedSecret[ock::HMAC_SIZE];
     mbedtls_sha256((const unsigned char *)PASSWORD, strlen(PASSWORD), sharedSecret, 0);
+    verifier.setKey(sharedSecret);
+    memset(sharedSecret, 0, sizeof(sharedSecret));
 
-    if (DEBUG_MODE)
-    {
-        Serial.print("Generated 32-byte key (from: " + String(PASSWORD) + "): ");
-        for (int i = 0; i < 32; i++)
-        {
-            Serial.printf("%02x", sharedSecret[i]);
-        }
-        Serial.println();
-    }
+    // Without a loaded counter every command is refused, a fresh one could accept recorded commands
+    if (!verifier.begin())
+        Serial.println("ERROR: Could not load the rolling code counter, all commands will be refused. Hold BOOT for 3 seconds to reset it.");
+    else if (DEBUG_MODE)
+        Serial.printf("Rolling code counter: %u\n", verifier.counter());
 
     // Create the BLE Device
     BLEDevice::init(scrambleName(DEVICE_NAME));
@@ -713,23 +622,25 @@ void readBootButton()
         if (!isBootButtonPressed)
         {
             if (DEBUG_MODE)
-                Serial.println("BOOT Pressed. hold for 5 seconds to reset rolling code counter");
+                Serial.println("BOOT Pressed. hold for 3 seconds to reset rolling code counter");
             bootButtonPressStart = millis();
             isBootButtonPressed = true;
         }
-        else if (millis() - bootButtonPressStart >= 3000)
+        else if (!counterResetDone && millis() - bootButtonPressStart >= 3000)
         {
-            if (DEBUG_MODE)
-                Serial.println("Resseting rolling code counter");
+            // Only once per press, holding it longer doesn't keep writing to flash
+            counterResetDone = true;
 
-            counter = 0;
-            writeCounter(counter);
-            delay(1000);
+            if (verifier.resetCounter())
+                Serial.println("Rolling code counter reset");
+            else
+                Serial.println("ERROR: Could not save the reset rolling code counter");
         }
     }
     else
     {
         isBootButtonPressed = false;
+        counterResetDone = false;
     }
 }
 

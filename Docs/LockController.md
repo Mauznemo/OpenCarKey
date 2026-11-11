@@ -24,6 +24,7 @@
 &emsp;[setupBluetooth](#setupbluetooth)<br>
 &emsp;[bluetoothLoop](#bluetoothloop)<br>
 **[Ble communication protocol](#ble-communication-protocol)**<br>
+**[Security tests](#security-tests)**<br>
 
 ## Config
 Open `Firmware/LockController/src/config.h`.
@@ -32,7 +33,7 @@ Open `Firmware/LockController/src/config.h`.
 Set this to the name the device should show as during Bluetooth discovery (This is not the name of the vehicle that will be shown in the app, normal Bluetooth will not see this name in plain text)
 
 ### `PASSWORD`
-Set this to a unique password (longer passwords are more secure).
+Set this to a long, unique password and enter the same one in the app. It has to be at least 12 characters, otherwise the firmware doesn't build. Anyone in Bluetooth range can record a command and try to guess the password offline, so longer is better.
 
 ### `SUPPORTED_FEATURES`
 With this you can define all the capabilities your vehicle has, so that the appropriate buttons will be shown in the app's interface.
@@ -311,10 +312,18 @@ void bluetoothLoop()
 ```
 Loop need for bluetooth to work
 
-## Ble communication protocol (V4)
+## Ble communication protocol (V5)
 Communication protocol between ESP and App.
 ### Message structure (from client/app):
 32 byte HMAC + 1 byte command (+ optional additional data length + bytes)
+
+The HMAC is HMAC-SHA256 with the key `SHA-256(PASSWORD)` over:
+`counter (uint32 little endian) + command` and, if the message has additional data, `+ data length + data`.
+So the additional data (like the unlock range) can't be changed without breaking the HMAC (it wasn't covered in V4).
+
+The counter is the rolling code: the ESP accepts a counter from its current one up to 63 ahead, then moves past it, so every message works only once. Messages with a wrong length byte, more than 12 bytes of data, data a command doesn't expect or values out of range are rejected. Commands for features that are not in `SUPPORTED_FEATURES` are ignored.
+
+Holding the BOOT button for 3 seconds resets the counter to 0 (for when the app and controller got out of sync). Messages recorded before the reset become valid again, so only do it when needed, or change the password at the same time.
 
 ### Response structure (From ESP32)
 1 byte command (+ optional additional data length + bytes)
@@ -348,4 +357,14 @@ Engine and window state are only kept in RAM on the ESP, so they reset to "off" 
 | --------------------------- | ---------------------------------------- |
 | `0x03` (PROXIMITY_LOCKED)   | Vehicle was locked using proximity key   |
 | `0x05` (PROXIMITY_UNLOCKED) | Vehicle was unlocked using proximity key |
+
+## Security tests
+Everything that decides if a message is accepted (message parsing, HMAC, rolling code counter, feature checks, data validation) and when the proximity key locks or unlocks lives in `lib/OckCore`, so it can be tested on your computer without an ESP32:
+```
+cd Firmware/LockController
+pio test -e native
+```
+The tests run with the address and undefined behaviour sanitizers, so reading past a buffer fails them too.
+
+The app has matching tests (`cd MobileApp && flutter test`). Both sides check the same message test vectors, so if the message format changes on one side only, both fail.
 

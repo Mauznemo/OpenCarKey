@@ -59,7 +59,7 @@ class SettingsService {
   }
 
   void setTriggerStrength(double value) {
-    BleBackgroundService.setProximityStrength(-200);
+    BleBackgroundService.setProximityStrength(value);
     prefs.setDouble('triggerStrength', value);
     ref.read(settingsProvider.notifier).setTriggerStrength(value);
   }

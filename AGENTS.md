@@ -18,6 +18,7 @@ The end user only has to update the config.h and main.cpp to define what functio
 - 
 ## Development Guidelines
 - If changing the message protocol, update both firmware and Flutter, if needed also update the version and docs (Docs/LockController.md).
+- Security critical logic (message parsing, HMAC, rolling codes, feature checks, proximity decisions) lives in `Firmware/LockController/lib/OckCore` and `MobileApp/lib/utils/rolling_code.dart`. Keep it there and covered by tests: `pio test -e native` (in Firmware/LockController) and `flutter test` (in MobileApp). Both share the message test vectors, update both if the format changes.
 
 ### MobileApp
 - Keep designs and styling the same as existing widgets or pages

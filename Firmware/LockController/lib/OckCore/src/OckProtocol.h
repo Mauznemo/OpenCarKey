@@ -1,10 +1,11 @@
-#ifndef COMMAND_CODES_H
-#define COMMAND_CODES_H
+#pragma once
 
+#include <stddef.h>
 #include <stdint.h>
+#include "OckFeatures.h"
 
 // clang-format off
-// Protocol Version: V4
+// Protocol Version: V5
 
 /// @brief Commands sent by the client/app to the ESP32
 enum class ClientCommand : uint8_t
@@ -26,7 +27,7 @@ enum class ClientCommand : uint8_t
     CLOSE_WINDOWS      = 0x0E
 };
 
-const char* toString(ClientCommand cmd)
+inline const char* toString(ClientCommand cmd)
 {
     switch (cmd)
     {
@@ -66,5 +67,27 @@ enum class Esp32Response : uint8_t
     WINDOWS_OPENED     = 0x0A,
     WINDOWS_CLOSED     = 0x0B,
 };
+// clang-format on
 
-#endif
+namespace ock
+{
+    /// @brief Version of the bluetooth protocol, bump it whenever the message format changes
+    constexpr const char *PROTOCOL_VERSION = "V5";
+
+    constexpr size_t HMAC_SIZE = 32;
+    /// @brief HMAC + command byte, the smallest valid message
+    constexpr size_t MIN_MESSAGE_SIZE = HMAC_SIZE + 1;
+    /// @brief Most additional data bytes a client message may carry
+    constexpr size_t MAX_DATA_LENGTH = 12;
+    /// @brief counter (4) + command (1) + data length (1) + data
+    constexpr size_t MAX_HMAC_INPUT_SIZE = 4 + 1 + 1 + MAX_DATA_LENGTH;
+
+    /// @brief True if `command` is one of the ClientCommand values
+    bool isKnownCommand(uint8_t command);
+
+    /// @brief The vehicle feature a command needs, Feature::None if it is always allowed
+    Feature requiredFeature(ClientCommand command);
+
+    /// @brief How many additional data bytes the command has to carry
+    size_t expectedDataLength(ClientCommand command);
+}
