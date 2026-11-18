@@ -51,11 +51,30 @@ inline std::vector<uint8_t> keyFromPassword(const char *password)
     return key;
 }
 
-/// Builds a message exactly like the app does (MobileApp/lib/utils/rolling_code.dart)
-inline std::vector<uint8_t> buildMessage(const std::vector<uint8_t> &key, uint32_t counter, uint8_t command,
-                                         const std::vector<uint8_t> &data = std::vector<uint8_t>())
+/// Session nonce the tests use by default (and the shared vectors): bytes 0x00..0x0f
+inline std::vector<uint8_t> testNonce()
 {
-    std::vector<uint8_t> input;
+    std::vector<uint8_t> nonce(ock::SESSION_NONCE_SIZE);
+    for (size_t i = 0; i < nonce.size(); i++)
+        nonce[i] = (uint8_t)i;
+    return nonce;
+}
+
+/// A different session nonce, like the one of another connection
+inline std::vector<uint8_t> otherNonce()
+{
+    std::vector<uint8_t> nonce(ock::SESSION_NONCE_SIZE);
+    for (size_t i = 0; i < nonce.size(); i++)
+        nonce[i] = (uint8_t)(0xA0 + i);
+    return nonce;
+}
+
+/// Builds a message for the session with `nonce` exactly like the app does (MobileApp/lib/utils/rolling_code.dart)
+inline std::vector<uint8_t> buildSessionMessage(const std::vector<uint8_t> &nonce, const std::vector<uint8_t> &key,
+                                                uint32_t counter, uint8_t command,
+                                                const std::vector<uint8_t> &data = std::vector<uint8_t>())
+{
+    std::vector<uint8_t> input(nonce.begin(), nonce.end());
     for (int i = 0; i < 4; i++)
         input.push_back((uint8_t)(counter >> (8 * i)));
     input.push_back(command);
@@ -74,6 +93,20 @@ inline std::vector<uint8_t> buildMessage(const std::vector<uint8_t> &key, uint32
         message.insert(message.end(), data.begin(), data.end());
     }
     return message;
+}
+
+inline std::vector<uint8_t> buildSessionMessage(const std::vector<uint8_t> &nonce, const std::vector<uint8_t> &key,
+                                                uint32_t counter, ClientCommand command,
+                                                const std::vector<uint8_t> &data = std::vector<uint8_t>())
+{
+    return buildSessionMessage(nonce, key, counter, static_cast<uint8_t>(command), data);
+}
+
+/// Builds a message for the default test session (testNonce)
+inline std::vector<uint8_t> buildMessage(const std::vector<uint8_t> &key, uint32_t counter, uint8_t command,
+                                         const std::vector<uint8_t> &data = std::vector<uint8_t>())
+{
+    return buildSessionMessage(testNonce(), key, counter, command, data);
 }
 
 inline std::vector<uint8_t> buildMessage(const std::vector<uint8_t> &key, uint32_t counter, ClientCommand command,
@@ -97,7 +130,8 @@ inline std::vector<uint8_t> floatBytes(float a, float b)
     return bytes;
 }
 
-/// A verifier that is ready to use, with the key from `password` and the counter at `counter`
+/// A verifier that is ready to use, with the key from `password`, the counter at `counter`
+/// and a session with testNonce (like right after a connect)
 struct VerifierFixture
 {
     MemoryCounterStore store;
@@ -110,5 +144,6 @@ struct VerifierFixture
         store.value = counter;
         verifier.setKey(key.data());
         verifier.begin();
+        verifier.beginSession(testNonce().data());
     }
 };

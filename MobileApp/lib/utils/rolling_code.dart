@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
 import '../types/ble_commands.dart';
+import '../types/vehicle_session.dart';
 
 /// Most additional data bytes a command may carry (the firmware rejects more).
 const int maxAdditionalDataLength = 12;
@@ -34,19 +35,53 @@ String? validatePassword(String? value) {
   return null;
 }
 
-/// The bytes the HMAC covers: counter (uint32 little endian) + command, plus
-/// data length + data if there is data. Covering the data means nobody can
-/// swap in their own values (e.g. a different unlock range) into a valid
-/// message.
+/// Length of the random nonce the vehicle picks for every connection.
+const int sessionNonceLength = 16;
+
+/// Length of the session characteristic (ffe2): nonce + counter (uint32).
+const int sessionInfoLength = sessionNonceLength + 4;
+
+/// Parses the session characteristic (ffe2) the vehicle sets on every
+/// connect: nonce (16 bytes) + its current counter (uint32 little endian).
+/// Anything else is an error, a command must never go out with a guessed
+/// nonce or counter.
+VehicleSession parseSessionInfo(List<int> value) {
+  if (value.length != sessionInfoLength) {
+    throw FormatException(
+      'Session info has to be $sessionInfoLength bytes, got ${value.length}',
+    );
+  }
+  final bytes = Uint8List.fromList(value);
+  final nonce = bytes.sublist(0, sessionNonceLength);
+  // The vehicle never picks an all zero nonce, that would be a broken value
+  if (nonce.every((b) => b == 0)) {
+    throw const FormatException('Session info has no nonce');
+  }
+  return VehicleSession(
+    nonce: nonce,
+    nextCounter: ByteData.sublistView(
+      bytes,
+    ).getUint32(sessionNonceLength, Endian.little),
+  );
+}
+
+/// The bytes the HMAC covers: session nonce (16 bytes) + counter (uint32
+/// little endian) + command, plus data length + data if there is data.
+/// Covering the data means nobody can swap in their own values (e.g. a
+/// different unlock range) into a valid message, and the nonce ties the
+/// message to the connection it was made for.
 Uint8List buildHmacInput(
+  Uint8List nonce,
   int counter,
   ClientCommand command, {
   Uint8List? additionalData,
 }) {
+  _checkNonce(nonce);
   _checkCounter(counter);
   final data = _checkData(additionalData);
 
   final builder = BytesBuilder();
+  builder.add(nonce);
   builder.add(
     Uint8List(4)..buffer.asByteData().setUint32(0, counter, Endian.little),
   );
@@ -58,14 +93,16 @@ Uint8List buildHmacInput(
   return builder.toBytes();
 }
 
-/// HMAC-SHA256 of the counter, command and additional data.
+/// HMAC-SHA256 of the nonce, counter, command and additional data.
 Uint8List generateHmac(
+  Uint8List nonce,
   int counter,
   ClientCommand command,
   Uint8List sharedSecret, {
   Uint8List? additionalData,
 }) {
   final input = buildHmacInput(
+    nonce,
     counter,
     command,
     additionalData: additionalData,
@@ -76,6 +113,7 @@ Uint8List generateHmac(
 /// The full message written to the vehicle:
 /// 32 byte HMAC + 1 byte command (+ 1 byte data length + data).
 Uint8List buildCommandPayload(
+  Uint8List nonce,
   int counter,
   ClientCommand command,
   Uint8List sharedSecret, {
@@ -84,7 +122,7 @@ Uint8List buildCommandPayload(
   final data = _checkData(additionalData);
   final builder = BytesBuilder();
   builder.add(
-    generateHmac(counter, command, sharedSecret, additionalData: data),
+    generateHmac(nonce, counter, command, sharedSecret, additionalData: data),
   );
   builder.addByte(command.value);
   if (data != null) {
@@ -92,6 +130,16 @@ Uint8List buildCommandPayload(
     builder.add(data);
   }
   return builder.toBytes();
+}
+
+void _checkNonce(Uint8List nonce) {
+  if (nonce.length != sessionNonceLength) {
+    throw ArgumentError.value(
+      nonce.length,
+      'nonce',
+      'The session nonce has to be $sessionNonceLength bytes',
+    );
+  }
 }
 
 void _checkCounter(int counter) {

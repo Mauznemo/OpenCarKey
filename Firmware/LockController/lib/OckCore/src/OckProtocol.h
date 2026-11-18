@@ -79,8 +79,12 @@ namespace ock
     constexpr size_t MIN_MESSAGE_SIZE = HMAC_SIZE + 1;
     /// @brief Most additional data bytes a client message may carry
     constexpr size_t MAX_DATA_LENGTH = 12;
-    /// @brief counter (4) + command (1) + data length (1) + data
-    constexpr size_t MAX_HMAC_INPUT_SIZE = 4 + 1 + 1 + MAX_DATA_LENGTH;
+    /// @brief Random value the controller picks for every connection, part of the HMAC input
+    constexpr size_t SESSION_NONCE_SIZE = 16;
+    /// @brief Value of the session info characteristic (ffe2): nonce (16) + counter (uint32 little endian)
+    constexpr size_t SESSION_INFO_SIZE = SESSION_NONCE_SIZE + 4;
+    /// @brief nonce (16) + counter (4) + command (1) + data length (1) + data
+    constexpr size_t MAX_HMAC_INPUT_SIZE = SESSION_NONCE_SIZE + 4 + 1 + 1 + MAX_DATA_LENGTH;
 
     /// @brief True if `command` is one of the ClientCommand values
     bool isKnownCommand(uint8_t command);

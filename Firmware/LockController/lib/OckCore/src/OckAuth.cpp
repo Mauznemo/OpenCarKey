@@ -30,13 +30,24 @@ namespace ock
         return true;
     }
 
-    size_t buildHmacInput(uint32_t counter, const ClientMessage &message, uint8_t *out)
+    namespace
+    {
+        size_t writeUint32Le(uint32_t value, uint8_t *out)
+        {
+            out[0] = static_cast<uint8_t>(value);
+            out[1] = static_cast<uint8_t>(value >> 8);
+            out[2] = static_cast<uint8_t>(value >> 16);
+            out[3] = static_cast<uint8_t>(value >> 24);
+            return 4;
+        }
+    }
+
+    size_t buildHmacInput(const uint8_t *nonce, uint32_t counter, const ClientMessage &message, uint8_t *out)
     {
         size_t length = 0;
-        out[length++] = static_cast<uint8_t>(counter);
-        out[length++] = static_cast<uint8_t>(counter >> 8);
-        out[length++] = static_cast<uint8_t>(counter >> 16);
-        out[length++] = static_cast<uint8_t>(counter >> 24);
+        memcpy(out, nonce, SESSION_NONCE_SIZE);
+        length += SESSION_NONCE_SIZE;
+        length += writeUint32Le(counter, out + length);
         out[length++] = message.command;
 
         if (message.dataLength > 0)
@@ -49,6 +60,12 @@ namespace ock
         return length;
     }
 
+    size_t writeSessionInfo(const uint8_t *nonce, uint32_t counter, uint8_t *out)
+    {
+        memcpy(out, nonce, SESSION_NONCE_SIZE);
+        return SESSION_NONCE_SIZE + writeUint32Le(counter, out + SESSION_NONCE_SIZE);
+    }
+
     bool constantTimeEquals(const uint8_t *a, const uint8_t *b, size_t length)
     {
         uint8_t diff = 0;
@@ -58,9 +75,10 @@ namespace ock
     }
 
     RollingCodeVerifier::RollingCodeVerifier(HmacSha256Fn hmac, CounterStore &store)
-        : hmac_(hmac), store_(store), counter_(0), ready_(false)
+        : hmac_(hmac), store_(store), counter_(0), ready_(false), sessionActive_(false)
     {
         memset(key_, 0, sizeof(key_));
+        memset(nonce_, 0, sizeof(nonce_));
     }
 
     void RollingCodeVerifier::setKey(const uint8_t *key)
@@ -76,10 +94,26 @@ namespace ock
         return ready_;
     }
 
+    void RollingCodeVerifier::beginSession(const uint8_t *nonce)
+    {
+        memcpy(nonce_, nonce, sizeof(nonce_));
+        sessionActive_ = true;
+    }
+
+    void RollingCodeVerifier::endSession()
+    {
+        sessionActive_ = false;
+        memset(nonce_, 0, sizeof(nonce_));
+    }
+
     AuthResult RollingCodeVerifier::authenticate(const ClientMessage &message)
     {
         if (!ready_)
             return AuthResult::NotReady;
+
+        // Without a session there is no nonce, and the zeroed one must never count as one
+        if (!sessionActive_)
+            return AuthResult::NoSession;
 
         if (message.dataLength > MAX_DATA_LENGTH || (message.dataLength > 0 && message.data == nullptr))
             return AuthResult::InvalidHmac;
@@ -94,7 +128,7 @@ namespace ock
                 return AuthResult::CounterExhausted;
 
             const uint32_t candidate = counter_ + i;
-            const size_t inputLength = buildHmacInput(candidate, message, input);
+            const size_t inputLength = buildHmacInput(nonce_, candidate, message, input);
             if (!hmac_(key_, sizeof(key_), input, inputLength, expected))
                 return AuthResult::InvalidHmac;
 
@@ -117,5 +151,12 @@ namespace ock
         counter_ = 0;
         ready_ = store_.save(counter_);
         return ready_;
+    }
+
+    size_t RollingCodeVerifier::sessionInfo(uint8_t *out) const
+    {
+        if (!sessionActive_)
+            return 0;
+        return writeSessionInfo(nonce_, counter_, out);
     }
 }

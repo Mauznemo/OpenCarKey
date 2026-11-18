@@ -42,12 +42,21 @@ namespace ock
         count_ = 0;
     }
 
-    void RssiFilter::add(int rssi)
+    bool isValidRssiReading(int rssi)
     {
+        return rssi >= MIN_RSSI_READING && rssi <= MAX_RSSI_READING;
+    }
+
+    bool RssiFilter::add(int rssi)
+    {
+        if (!isValidRssiReading(rssi))
+            return false;
+
         samples_[index_] = rssi;
         index_ = (index_ + 1) % SAMPLES;
         if (count_ < SAMPLES)
             count_++;
+        return true;
     }
 
     float RssiFilter::average() const

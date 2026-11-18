@@ -17,6 +17,8 @@ namespace ock
         /// @brief The counter could not be loaded or saved
         StorageError,
         CounterExhausted,
+        /// @brief No connection session is active, nothing can be authentic
+        NoSession,
         /// @brief Authentic but the command byte is unknown
         UnknownCommand,
         /// @brief Authentic but the vehicle doesn't have the feature (see SUPPORTED_FEATURES)

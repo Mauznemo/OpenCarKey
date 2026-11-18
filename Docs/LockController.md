@@ -314,16 +314,30 @@ Loop need for bluetooth to work
 
 ## Ble communication protocol (V5)
 Communication protocol between ESP and App.
+The service `0000ffe0-0000-1000-8000-00805f9b34fb` has two characteristics:
+
+| Characteristic | Properties          | Used for                                              |
+| -------------- | ------------------- | ----------------------------------------------------- |
+| `ffe1`         | Read, Write, Notify | Messages from the app, responses from the ESP         |
+| `ffe2`         | Read                | Session info: `nonce (16 bytes) + counter (uint32 little endian)` |
+
+### Session (per connection)
+On every connect the ESP picks a random 16 byte session nonce (hardware RNG) and forgets it again on disconnect. `ffe2` holds that nonce plus the ESP's current counter (20 bytes), and is empty while nothing is connected. It is updated after every message and when the counter is reset.
+
+The app reads `ffe2` once per connection, before its first command, and then counts up from that counter itself. It keeps no counter of its own between connections, the ESP tells it. After an `INVALID_HMAC` response it reads `ffe2` again, so it fixes itself if it ever gets out of step.
+
+The nonce is part of every HMAC, so a message only works on the connection it was made for. Without it someone could advertise as your vehicle while the car is somewhere else, let the app connect and send its commands (with fresh counters the car never saw), then walk to the car and replay them. With the nonce those messages are useless on any other connection, and since the app takes the counter from the vehicle, a fake one can't make it use up counters either.
+
 ### Message structure (from client/app):
-32 byte HMAC + 1 byte command (+ optional additional data length + bytes)
+32 byte HMAC + 1 byte command (+ optional additional data length + bytes), written to `ffe1`
 
 The HMAC is HMAC-SHA256 with the key `SHA-256(PASSWORD)` over:
-`counter (uint32 little endian) + command` and, if the message has additional data, `+ data length + data`.
+`session nonce (16 bytes) + counter (uint32 little endian) + command` and, if the message has additional data, `+ data length + data`.
 So the additional data (like the unlock range) can't be changed without breaking the HMAC (it wasn't covered in V4).
 
-The counter is the rolling code: the ESP accepts a counter from its current one up to 63 ahead, then moves past it, so every message works only once. Messages with a wrong length byte, more than 12 bytes of data, data a command doesn't expect or values out of range are rejected. Commands for features that are not in `SUPPORTED_FEATURES` are ignored.
+The counter is the rolling code: the ESP accepts a counter from its current one up to 63 ahead, then moves past it, so every message works only once, even on the same connection. The counter is kept across connections and reboots as a second layer. Messages with a wrong length byte, more than 12 bytes of data, data a command doesn't expect or values out of range are rejected. Commands for features that are not in `SUPPORTED_FEATURES` are ignored.
 
-Holding the BOOT button for 3 seconds resets the counter to 0 (for when the app and controller got out of sync). Messages recorded before the reset become valid again, so only do it when needed, or change the password at the same time.
+Holding the BOOT button for 3 seconds resets the counter to 0 (for when the app and controller got out of sync). Messages recorded before the reset still don't work, they belong to old sessions with a different nonce. A connected app gets a new nonce too and reads it again with its next command (that one command fails once).
 
 ### Response structure (From ESP32)
 1 byte command (+ optional additional data length + bytes)

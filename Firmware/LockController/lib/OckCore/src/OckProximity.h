@@ -12,6 +12,12 @@ namespace ock
     constexpr float MAX_TRIGGER_RSSI = 0.0f;
     constexpr float MAX_DEAD_ZONE = 100.0f;
     constexpr float MAX_PROXIMITY_COOLDOWN_MIN = 60.0f;
+    /// @brief Range a BLE RSSI reading can actually have, in dBm (HCI uses 127 for "not available")
+    constexpr int MIN_RSSI_READING = -127;
+    constexpr int MAX_RSSI_READING = 20;
+
+    /// @brief True if `rssi` is a real reading and not "not available" or garbage from a failed read
+    bool isValidRssiReading(int rssi);
 
     /// @brief True if the RSSI_TRIGGER values are finite and in a sane range
     bool isValidRssiTrigger(float triggerRssi, float deadZone);
@@ -36,7 +42,10 @@ namespace ock
 
         /// @brief Forgets all readings, call it whenever the readings could be stale (new connection etc.)
         void reset();
-        void add(int rssi);
+        /// @brief Adds a reading. Readings outside the possible range (see isValidRssiReading) are
+        /// ignored, they would pull the average up and could unlock the car.
+        /// @return false if the reading was ignored
+        bool add(int rssi);
         /// @brief True once SAMPLES readings were added since the last reset
         bool full() const { return count_ >= SAMPLES; }
         size_t count() const { return count_; }

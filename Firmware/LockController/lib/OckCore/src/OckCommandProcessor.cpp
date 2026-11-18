@@ -42,6 +42,8 @@ namespace ock
             return makeDecision(CommandStatus::InvalidHmac, command);
         case AuthResult::CounterExhausted:
             return makeDecision(CommandStatus::CounterExhausted, command);
+        case AuthResult::NoSession:
+            return makeDecision(CommandStatus::NoSession, command);
         case AuthResult::NotReady:
         case AuthResult::StorageError:
         default:
@@ -85,6 +87,7 @@ namespace ock
         case CommandStatus::InvalidHmac:        return "InvalidHmac";
         case CommandStatus::StorageError:       return "StorageError";
         case CommandStatus::CounterExhausted:   return "CounterExhausted";
+        case CommandStatus::NoSession:          return "NoSession";
         case CommandStatus::UnknownCommand:     return "UnknownCommand";
         case CommandStatus::UnsupportedFeature: return "UnsupportedFeature";
         case CommandStatus::InvalidData:        return "InvalidData";
@@ -100,6 +103,7 @@ namespace ock
         case CommandStatus::InvalidHmac:
         case CommandStatus::StorageError:
         case CommandStatus::CounterExhausted:
+        case CommandStatus::NoSession:
             return true;
         default:
             return false;

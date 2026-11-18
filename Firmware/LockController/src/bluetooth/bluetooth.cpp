@@ -5,6 +5,7 @@
 #include <BLE2902.h>
 #include "bluetooth.h"
 #include "esp_gap_ble_api.h"
+#include "esp_system.h"
 #include <mbedtls/sha256.h>
 #include <mbedtls/md.h>
 #include <nvs.h>
@@ -24,11 +25,14 @@ static_assert(ock::isPasswordLongEnough(PASSWORD),
 // BLE service and characteristic UUIDs
 #define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
+// Read only: session nonce + current counter, the app needs both to build a message
+#define SESSION_CHARACTERISTIC_UUID "0000ffe2-0000-1000-8000-00805f9b34fb"
 
 const std::string PROTOCOL_VERSION = ock::PROTOCOL_VERSION;
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
+BLECharacteristic *pSessionCharacteristic = NULL;
 esp_bd_addr_t peerAddress;
 
 void (*onConnected)() = nullptr;
@@ -166,6 +170,33 @@ namespace
 
     NvsCounterStore counterStore;
     ock::RollingCodeVerifier verifier(hmacSha256, counterStore);
+
+    /// Puts the current nonce and counter into the session characteristic,
+    /// or an empty value while there is no session (never a stale nonce).
+    void updateSessionInfo()
+    {
+        if (pSessionCharacteristic == NULL)
+            return;
+        uint8_t info[ock::SESSION_INFO_SIZE];
+        const size_t length = verifier.sessionInfo(info);
+        pSessionCharacteristic->setValue(info, length);
+    }
+
+    /// Starts a new session with a fresh nonce. The hardware RNG is a true RNG while Bluetooth is on.
+    void startSession()
+    {
+        uint8_t nonce[ock::SESSION_NONCE_SIZE];
+        esp_fill_random(nonce, sizeof(nonce));
+        verifier.beginSession(nonce);
+        memset(nonce, 0, sizeof(nonce));
+        updateSessionInfo();
+    }
+
+    void endSession()
+    {
+        verifier.endSession();
+        updateSessionInfo();
+    }
 }
 
 void sendToClient(Esp32Response responseCode, const uint8_t *data = nullptr, size_t dataLen = 0)
@@ -348,6 +379,8 @@ class MyServerCallbacks : public BLEServerCallbacks
         memcpy(peerAddress, param->connect.remote_bda, sizeof(esp_bd_addr_t));
         // Readings from the previous connection must never count for this one
         rssiFilter.reset();
+        // Messages made for any other connection (including ones a fake vehicle collected) stop working
+        startSession();
         deviceConnected = true;
 
         // Request low-power connection parameters, but delayed (see bluetoothLoop).
@@ -363,6 +396,7 @@ class MyServerCallbacks : public BLEServerCallbacks
         if (DEBUG_MODE)
             Serial.println("Disconnected");
         deviceConnected = false;
+        endSession();
         rssiFilter.reset();
         // Cancel any pending conn-param update so it can't fire against a new peer.
         connParamsPending = false;
@@ -397,6 +431,8 @@ class MyCallbacks : public BLECharacteristicCallbacks
         const ock::CommandDecision decision = ock::processClientMessage(
             verifier, SUPPORTED_FEATURES, reinterpret_cast<const uint8_t *>(value.data()), value.length());
         const ClientCommand command = decision.command;
+        // The counter moves whenever a message was authentic, keep what the app reads up to date
+        updateSessionInfo();
 
         if (decision.status != ock::CommandStatus::Accepted)
         {
@@ -506,7 +542,15 @@ void gapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
         if (!deviceConnected)
             return;
 
-        rssiFilter.add(param->read_rssi_cmpl.rssi);
+        // The value of a failed read is undefined, and a reading for another address is not our phone
+        if (param->read_rssi_cmpl.status != ESP_BT_STATUS_SUCCESS ||
+            memcmp(param->read_rssi_cmpl.remote_addr, peerAddress, sizeof(esp_bd_addr_t)) != 0)
+            return;
+
+        // Ignores "not available" (127) and anything else outside the possible range
+        if (!rssiFilter.add(param->read_rssi_cmpl.rssi))
+            return;
+
         float avgRSSI = rssiFilter.average();
 
         if (sendRssi)
@@ -585,6 +629,12 @@ void setupBluetooth()
     pCharacteristic->setCallbacks(new MyCallbacks());
     pCharacteristic->addDescriptor(new BLE2902());
 
+    // Created after ffe1 and its descriptor so their handles stay where they were.
+    // Stays empty until the first connect starts a session.
+    pSessionCharacteristic = pService->createCharacteristic(
+        SESSION_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_READ);
+
     // Start the service
     pService->start();
 
@@ -635,6 +685,11 @@ void readBootButton()
                 Serial.println("Rolling code counter reset");
             else
                 Serial.println("ERROR: Could not save the reset rolling code counter");
+
+            // A new nonce for the current connection too, so messages already used on it can't
+            // come back with the reset counter. The app re-reads the session after INVALID_HMAC.
+            if (deviceConnected)
+                startSession();
         }
     }
     else

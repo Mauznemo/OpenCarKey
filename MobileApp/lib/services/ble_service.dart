@@ -1,30 +1,25 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'dart:isolate';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../types/background_vehicle.dart';
 import '../types/ble_commands.dart';
+import '../types/vehicle_session.dart';
 import 'ble_background_service.dart';
 import '../utils/esp32_response_parser.dart';
 import '../utils/rolling_code.dart';
 
 class BleService {
-  static SharedPreferences? _prefs;
-
-  /// Last rolling code counter handed out per device, kept in memory so it can
-  /// never go backwards inside this isolate. SharedPreferences is only the
-  /// backup across restarts: [reloadPrefs] (and the prefs reloads done
-  /// elsewhere in the app) replace the whole prefs cache with the on-disk
-  /// snapshot, which can be older than a counter that was just handed out, and
-  /// a reused counter is seen as a replay by the firmware.
-  static final Map<String, int> _counters = {};
+  /// Protocol version reported for firmware without the session
+  /// characteristic, it can't check the messages this app sends.
+  static const legacyProtocolVersion = 'V4 or older';
 
   /// Serializes [sendCommand] per device, so counters are allocated and written
   /// in the same order. Two commands sent at the same time (e.g. a user action
@@ -103,40 +98,71 @@ class BleService {
     }
   }
 
-  static Future<void> reloadPrefs() async {
-    await _prefs?.reload();
-
-    // Forget counters of vehicles that are gone (removed in the main isolate,
-    // which also deletes their counter), so re-adding one starts from scratch.
-    _counters.removeWhere((macAddress, _) =>
-        !(_prefs?.containsKey(_counterKey(macAddress)) ?? true));
-  }
-
-  static String _counterKey(String macAddress) => 'counter_$macAddress';
-
-  /// Returns the next rolling code counter for [macAddress] and persists it.
+  /// Returns the session (nonce + next counter) of the current connection to
+  /// [vehicle], reading it with [readSessionInfo] the first time.
   ///
-  /// Counters are never reused: the firmware accepts a counter at or ahead of
-  /// its own (within a window) and treats everything below as a replay.
-  /// Skipping a counter is harmless, handing the same one out twice is not.
+  /// The vehicle picks a new nonce on every connect and tells its current
+  /// counter with it, so the app keeps no counter of its own and a fake
+  /// vehicle can't make it burn counters. [readSessionInfo] returns null if
+  /// the vehicle has no session characteristic (firmware older than this
+  /// app), [onUnsupported] is then called once for this connection and no
+  /// command is sent.
   @visibleForTesting
-  static Future<int> nextCounter(
-      SharedPreferences prefs, String macAddress) async {
-    final key = _counterKey(macAddress);
-    final counter =
-        max(prefs.getInt(key) ?? -1, _counters[macAddress] ?? -1) + 1;
-    _counters[macAddress] = counter;
-    await prefs.setInt(key, counter);
-    return counter;
+  static Future<VehicleSession?> getSession(
+    BackgroundVehicle vehicle,
+    Future<List<int>?> Function() readSessionInfo, {
+    required void Function() onUnsupported,
+  }) async {
+    final cached = vehicle.session;
+    if (cached != null) return cached;
+    if (vehicle.sessionUnsupported) return null;
+
+    final value = await readSessionInfo();
+    if (value == null) {
+      vehicle.sessionUnsupported = true;
+      onUnsupported();
+      return null;
+    }
+
+    final session = parseSessionInfo(value);
+    vehicle.session = session;
+    return session;
   }
 
-  /// Forgets the in-memory counters, like an app restart does.
-  @visibleForTesting
-  static void clearCounterCacheForTesting() => _counters.clear();
+  /// Reads the session characteristic (ffe2), null if the vehicle has none.
+  static Future<List<int>?> _readSessionInfo(BluetoothDevice device) async {
+    var characteristic = _findSessionCharacteristic(device.servicesList);
+    if (characteristic == null) {
+      // Android caches the GATT table per device, so a firmware update that
+      // added ffe2 stays invisible until that cache is cleared.
+      if (Platform.isAndroid) {
+        try {
+          await device.clearGattCache();
+        } catch (e) {
+          print('Error clearing the GATT cache: $e');
+        }
+      }
+      characteristic =
+          _findSessionCharacteristic(await device.discoverServices());
+    }
+    if (characteristic == null) return null;
+    return characteristic.read();
+  }
 
-  static Future<SharedPreferences> _getPrefs() async {
-    _prefs ??= await SharedPreferences.getInstance();
-    return _prefs!;
+  static BluetoothCharacteristic? _findSessionCharacteristic(
+      List<BluetoothService> services) {
+    for (final service in services) {
+      if (service.uuid != Guid('0000ffe0-0000-1000-8000-00805f9b34fb')) {
+        continue;
+      }
+      for (final characteristic in service.characteristics) {
+        if (characteristic.uuid ==
+            Guid('0000ffe2-0000-1000-8000-00805f9b34fb')) {
+          return characteristic;
+        }
+      }
+    }
+    return null;
   }
 
   /// Send a command to a device.
@@ -183,8 +209,6 @@ class BleService {
         vehicle.characteristic = characteristic;
       }
 
-      final prefs = await _getPrefs();
-
       if (characteristic.device.isDisconnected) {
         print('Device is not connected');
         return null;
@@ -196,12 +220,32 @@ class BleService {
             'At most $maxAdditionalDataLength bytes are allowed');
       }
 
-      final counter = await nextCounter(prefs, device.remoteId.str);
-      final payload = buildCommandPayload(counter, command, sharedSecret,
+      final VehicleSession? session;
+      try {
+        session = await getSession(
+          vehicle,
+          () => _readSessionInfo(device),
+          onUnsupported: () {
+            print('${device.remoteId.str} has no session characteristic, '
+                'its firmware is too old for this app');
+            BleBackgroundService.reportProtocolMismatch(
+                device.remoteId.str, legacyProtocolVersion);
+          },
+        );
+      } catch (e) {
+        print('Error reading the session from the vehicle: $e');
+        return null;
+      }
+      if (session == null) return null;
+
+      final counter = session.takeCounter();
+      final payload = buildCommandPayload(
+          session.nonce, counter, command, sharedSecret,
           additionalData: additionalData);
 
-      // Neither the secret nor the payload is logged: a payload whose write
-      // failed is still valid for the vehicle until a newer counter arrives.
+      // Neither the secret, the nonce nor the payload is logged: a payload
+      // whose write failed is still valid for the vehicle until a newer
+      // counter arrives on the same connection.
       print(
           "Sending command: 0x${command.value.toRadixString(16)} counter at $counter");
 

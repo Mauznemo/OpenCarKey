@@ -51,6 +51,28 @@ namespace
         TEST_ASSERT_EQUAL_UINT32(0, fixture.verifier.counter());
     }
 
+    void test_no_session_is_rejected()
+    {
+        VerifierFixture fixture(3);
+        fixture.verifier.endSession();
+        ock::CommandDecision decision =
+            process(fixture, ALL_FEATURES, buildMessage(fixture.key, 3, ClientCommand::UNLOCK_DOORS));
+        TEST_ASSERT_EQUAL(ock::CommandStatus::NoSession, decision.status);
+        TEST_ASSERT_TRUE(ock::shouldReplyInvalidHmac(decision.status));
+        TEST_ASSERT_EQUAL_UINT32(3, fixture.verifier.counter());
+        TEST_ASSERT_EQUAL(0, fixture.store.saves);
+    }
+
+    void test_other_session_doesnt_consume_counter()
+    {
+        VerifierFixture fixture;
+        ock::CommandDecision decision = process(
+            fixture, ALL_FEATURES, buildSessionMessage(otherNonce(), fixture.key, 0, ClientCommand::UNLOCK_DOORS));
+        TEST_ASSERT_EQUAL(ock::CommandStatus::InvalidHmac, decision.status);
+        TEST_ASSERT_TRUE(ock::shouldReplyInvalidHmac(decision.status));
+        TEST_ASSERT_EQUAL_UINT32(0, fixture.verifier.counter());
+    }
+
     void test_storage_error_is_rejected()
     {
         VerifierFixture fixture;
@@ -195,6 +217,7 @@ namespace
         TEST_ASSERT_TRUE(ock::shouldReplyInvalidHmac(ock::CommandStatus::InvalidHmac));
         TEST_ASSERT_TRUE(ock::shouldReplyInvalidHmac(ock::CommandStatus::StorageError));
         TEST_ASSERT_TRUE(ock::shouldReplyInvalidHmac(ock::CommandStatus::CounterExhausted));
+        TEST_ASSERT_TRUE(ock::shouldReplyInvalidHmac(ock::CommandStatus::NoSession));
         TEST_ASSERT_FALSE(ock::shouldReplyInvalidHmac(ock::CommandStatus::UnknownCommand));
         TEST_ASSERT_FALSE(ock::shouldReplyInvalidHmac(ock::CommandStatus::UnsupportedFeature));
         TEST_ASSERT_FALSE(ock::shouldReplyInvalidHmac(ock::CommandStatus::InvalidData));
@@ -231,6 +254,8 @@ void runProcessorTests()
     RUN_TEST(test_accepts_valid_command);
     RUN_TEST(test_malformed_doesnt_consume_counter);
     RUN_TEST(test_invalid_hmac_doesnt_consume_counter);
+    RUN_TEST(test_no_session_is_rejected);
+    RUN_TEST(test_other_session_doesnt_consume_counter);
     RUN_TEST(test_storage_error_is_rejected);
     RUN_TEST(test_unsupported_features_never_run);
     RUN_TEST(test_always_allowed_commands);

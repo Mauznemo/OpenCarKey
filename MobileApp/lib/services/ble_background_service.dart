@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -404,6 +405,10 @@ class BleBackgroundService {
     // is handled normally.
     final mac = event.device.remoteId.str;
 
+    // A session belongs to one connection, and a duplicate event can mean the
+    // link was re-established underneath us. Re-reading it costs one read.
+    vehicle.forgetSession();
+
     // The device is back, so a recovery reconnect (if any) landed and its
     // watchdog has nothing left to report.
     _autoReconnectWatchdogs.remove(mac)?.cancel();
@@ -567,6 +572,8 @@ class BleBackgroundService {
       await Future.delayed(const Duration(milliseconds: 2500));
       if (gotResponse()) return;
       if (event.device.isDisconnected) return; // nothing to recover anymore
+      // Firmware too old for the app: no command is sent, so no answer comes
+      if (vehicle.sessionUnsupported) return;
 
       debugPrint(
         'No notification from $mac after connect (attempt ${attempt + 1}/'
@@ -630,8 +637,10 @@ class BleBackgroundService {
       _subscriptions.remove(mac);
     }
 
-    // Invalidate the cached characteristic; it belongs to the dead connection.
+    // Invalidate the cached characteristic and session; they belong to the
+    // dead connection.
     vehicle.characteristic = null;
+    vehicle.forgetSession();
 
     // Only treat this as a real disconnect if the device had actually
     // connected. autoConnect can emit a `disconnected` event for a device that
@@ -735,6 +744,25 @@ class BleBackgroundService {
     });
   }
 
+  /// Reports a vehicle that speaks an older protocol through the same path as
+  /// a VERSION response that doesn't match [PROTOCOL_VERSION]: the
+  /// notification here and the dialog in the app.
+  static void reportProtocolMismatch(
+    String macAddress,
+    String deviceProtocolVersion,
+  ) {
+    final version = utf8.encode(deviceProtocolVersion);
+    _onMessageReceived.value = Esp32ResponseDate(
+      macAddress: macAddress,
+      command: Esp32Response.VERSION,
+      parser: Esp32ResponseParser([
+        Esp32Response.VERSION.value,
+        version.length,
+        ...version,
+      ]),
+    );
+  }
+
   static Future<void> _handleMessage(Esp32ResponseDate espResponseData) async {
     if (espResponseData.command == Esp32Response.VERSION) {
       await _prefs.reload();
@@ -801,6 +829,10 @@ class BleBackgroundService {
       BackgroundVehicle? changedVehicle = _getChangedVehicle(
         espResponseData.macAddress,
       );
+
+      // Re-read nonce and counter before the next command, so the app heals
+      // itself if it ever got out of step with the vehicle.
+      changedVehicle?.session = null;
 
       ActivityService.instance.logAuthenticationFailed(changedVehicle?.data);
     } else if (espResponseData.command == Esp32Response.PROXIMITY_LOCKED) {
@@ -990,7 +1022,6 @@ class BleBackgroundService {
 
       case 'reload_vehicles':
         await VehicleStorage.reloadPrefs();
-        await BleService.reloadPrefs();
         _getVehicles();
         break;
 

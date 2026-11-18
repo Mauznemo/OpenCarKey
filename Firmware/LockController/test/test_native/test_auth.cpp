@@ -38,10 +38,11 @@ namespace
         std::vector<uint8_t> unlock = buildMessage(fixture.key, 0, ClientCommand::UNLOCK_DOORS);
         TEST_ASSERT_EQUAL(ock::AuthResult::Ok, authenticate(fixture, unlock));
 
-        // Same flash, fresh RAM
+        // Same flash, fresh RAM. Even with the same nonce the stored counter has to reject it.
         ock::RollingCodeVerifier rebooted(refHmacSha256, fixture.store);
         rebooted.setKey(fixture.key.data());
         TEST_ASSERT_TRUE(rebooted.begin());
+        rebooted.beginSession(testNonce().data());
         ock::ClientMessage message;
         TEST_ASSERT_TRUE(ock::parseClientMessage(unlock.data(), unlock.size(), message));
         TEST_ASSERT_EQUAL(ock::AuthResult::InvalidHmac, rebooted.authenticate(message));
@@ -161,6 +162,7 @@ namespace
         MemoryCounterStore store;
         ock::RollingCodeVerifier verifier(failingHmac, store);
         verifier.begin();
+        verifier.beginSession(testNonce().data());
         std::vector<uint8_t> zeros(33, 0);
         ock::ClientMessage message;
         TEST_ASSERT_TRUE(ock::parseClientMessage(zeros.data(), zeros.size(), message));
@@ -267,6 +269,116 @@ namespace
                           authenticate(fixture, buildMessage(fixture.key, 0, ClientCommand::UNLOCK_DOORS)));
     }
 
+    void test_message_for_another_session_is_rejected()
+    {
+        // What a fake vehicle collects from the app is made for its own nonce
+        VerifierFixture fixture(5);
+        for (uint32_t counter = 5; counter < 5 + ock::RollingCodeVerifier::WINDOW; counter++)
+            TEST_ASSERT_EQUAL(ock::AuthResult::InvalidHmac,
+                              authenticate(fixture, buildSessionMessage(otherNonce(), fixture.key, counter,
+                                                                        ClientCommand::UNLOCK_DOORS)));
+        TEST_ASSERT_EQUAL_UINT32(5, fixture.verifier.counter());
+        TEST_ASSERT_EQUAL(0, fixture.store.saves);
+
+        // The right session still works with the counter that was not used up
+        TEST_ASSERT_EQUAL(ock::AuthResult::Ok,
+                          authenticate(fixture, buildMessage(fixture.key, 5, ClientCommand::UNLOCK_DOORS)));
+    }
+
+    void test_nothing_accepted_without_session()
+    {
+        MemoryCounterStore store;
+        ock::RollingCodeVerifier verifier(refHmacSha256, store);
+        std::vector<uint8_t> key = keyFromPassword("test-password-123");
+        verifier.setKey(key.data());
+        TEST_ASSERT_TRUE(verifier.begin());
+        TEST_ASSERT_FALSE(verifier.hasSession());
+
+        // Before beginSession, not even a message for the all zero nonce the verifier starts with
+        const std::vector<uint8_t> zeroNonce(ock::SESSION_NONCE_SIZE, 0);
+        const std::vector<uint8_t> candidates[] = {
+            buildMessage(key, 0, ClientCommand::UNLOCK_DOORS),
+            buildSessionMessage(zeroNonce, key, 0, ClientCommand::UNLOCK_DOORS),
+        };
+        for (const std::vector<uint8_t> &payload : candidates)
+        {
+            ock::ClientMessage message;
+            TEST_ASSERT_TRUE(ock::parseClientMessage(payload.data(), payload.size(), message));
+            TEST_ASSERT_EQUAL(ock::AuthResult::NoSession, verifier.authenticate(message));
+        }
+
+        verifier.beginSession(testNonce().data());
+        TEST_ASSERT_TRUE(verifier.hasSession());
+        std::vector<uint8_t> first = buildMessage(key, 0, ClientCommand::UNLOCK_DOORS);
+        ock::ClientMessage message;
+        TEST_ASSERT_TRUE(ock::parseClientMessage(first.data(), first.size(), message));
+        TEST_ASSERT_EQUAL(ock::AuthResult::Ok, verifier.authenticate(message));
+
+        // After endSession (disconnect) a message for the session that just ended is refused too
+        verifier.endSession();
+        TEST_ASSERT_FALSE(verifier.hasSession());
+        std::vector<uint8_t> next = buildMessage(key, 1, ClientCommand::UNLOCK_DOORS);
+        TEST_ASSERT_TRUE(ock::parseClientMessage(next.data(), next.size(), message));
+        TEST_ASSERT_EQUAL(ock::AuthResult::NoSession, verifier.authenticate(message));
+        TEST_ASSERT_EQUAL_UINT32(1, verifier.counter());
+    }
+
+    void test_previous_session_rejected_after_counter_reset()
+    {
+        // Recorded on an earlier connection, then the counter was reset with the BOOT button.
+        // The counter alone would accept these again, the nonce must not.
+        VerifierFixture fixture;
+        std::vector<uint8_t> recorded[3];
+        for (uint32_t counter = 0; counter < 3; counter++)
+        {
+            recorded[counter] = buildMessage(fixture.key, counter, ClientCommand::UNLOCK_DOORS);
+            TEST_ASSERT_EQUAL(ock::AuthResult::Ok, authenticate(fixture, recorded[counter]));
+        }
+        fixture.verifier.endSession();
+
+        TEST_ASSERT_TRUE(fixture.verifier.resetCounter());
+        fixture.verifier.beginSession(otherNonce().data());
+        for (const std::vector<uint8_t> &payload : recorded)
+            TEST_ASSERT_EQUAL(ock::AuthResult::InvalidHmac, authenticate(fixture, payload));
+        TEST_ASSERT_EQUAL_UINT32(0, fixture.verifier.counter());
+
+        TEST_ASSERT_EQUAL(ock::AuthResult::Ok,
+                          authenticate(fixture, buildSessionMessage(otherNonce(), fixture.key, 0,
+                                                                    ClientCommand::UNLOCK_DOORS)));
+    }
+
+    void test_new_session_replaces_nonce()
+    {
+        VerifierFixture fixture;
+        fixture.verifier.beginSession(otherNonce().data());
+        TEST_ASSERT_EQUAL(ock::AuthResult::InvalidHmac,
+                          authenticate(fixture, buildMessage(fixture.key, 0, ClientCommand::UNLOCK_DOORS)));
+        TEST_ASSERT_EQUAL(ock::AuthResult::Ok,
+                          authenticate(fixture, buildSessionMessage(otherNonce(), fixture.key, 0,
+                                                                    ClientCommand::UNLOCK_DOORS)));
+    }
+
+    void test_session_info()
+    {
+        VerifierFixture fixture(0x12345678);
+        uint8_t info[ock::SESSION_INFO_SIZE];
+        TEST_ASSERT_EQUAL(ock::SESSION_INFO_SIZE, fixture.verifier.sessionInfo(info));
+        TEST_ASSERT_EQUAL_HEX8_ARRAY(testNonce().data(), info, ock::SESSION_NONCE_SIZE);
+        const uint8_t counter[] = {0x78, 0x56, 0x34, 0x12};
+        TEST_ASSERT_EQUAL_HEX8_ARRAY(counter, info + ock::SESSION_NONCE_SIZE, 4);
+
+        // Follows the counter once a message went through
+        TEST_ASSERT_EQUAL(ock::AuthResult::Ok,
+                          authenticate(fixture, buildMessage(fixture.key, 0x12345678, ClientCommand::LOCK_DOORS)));
+        fixture.verifier.sessionInfo(info);
+        const uint8_t next[] = {0x79, 0x56, 0x34, 0x12};
+        TEST_ASSERT_EQUAL_HEX8_ARRAY(next, info + ock::SESSION_NONCE_SIZE, 4);
+
+        // Nothing to tell without a session, never a stale nonce
+        fixture.verifier.endSession();
+        TEST_ASSERT_EQUAL(0, fixture.verifier.sessionInfo(info));
+    }
+
     void test_constant_time_equals()
     {
         const uint8_t a[] = {1, 2, 3, 4};
@@ -303,5 +415,10 @@ void runAuthTests()
     RUN_TEST(test_begin_loads_stored_counter);
     RUN_TEST(test_reset_counter);
     RUN_TEST(test_failed_reset_refuses_everything);
+    RUN_TEST(test_message_for_another_session_is_rejected);
+    RUN_TEST(test_nothing_accepted_without_session);
+    RUN_TEST(test_previous_session_rejected_after_counter_reset);
+    RUN_TEST(test_new_session_replaces_nonce);
+    RUN_TEST(test_session_info);
     RUN_TEST(test_constant_time_equals);
 }

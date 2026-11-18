@@ -55,6 +55,51 @@ namespace
         TEST_ASSERT_EQUAL_FLOAT(-90.0f, filter.average());
     }
 
+    void test_rssi_reading_range()
+    {
+        TEST_ASSERT_TRUE(ock::isValidRssiReading(-127));
+        TEST_ASSERT_TRUE(ock::isValidRssiReading(-60));
+        TEST_ASSERT_TRUE(ock::isValidRssiReading(0));
+        TEST_ASSERT_TRUE(ock::isValidRssiReading(20));
+        // 127 is "RSSI not available"
+        TEST_ASSERT_FALSE(ock::isValidRssiReading(127));
+        TEST_ASSERT_FALSE(ock::isValidRssiReading(21));
+        TEST_ASSERT_FALSE(ock::isValidRssiReading(-128));
+        TEST_ASSERT_FALSE(ock::isValidRssiReading(INT_MAX));
+        TEST_ASSERT_FALSE(ock::isValidRssiReading(INT_MIN));
+    }
+
+    void test_filter_ignores_impossible_readings()
+    {
+        ock::RssiFilter filter;
+        TEST_ASSERT_FALSE(filter.add(127));
+        TEST_ASSERT_FALSE(filter.add(21));
+        TEST_ASSERT_FALSE(filter.add(-128));
+        TEST_ASSERT_EQUAL(0, filter.count());
+
+        TEST_ASSERT_TRUE(filter.add(-90));
+        TEST_ASSERT_FALSE(filter.add(127));
+        TEST_ASSERT_EQUAL(1, filter.count());
+        TEST_ASSERT_EQUAL_FLOAT(-90.0f, filter.average());
+    }
+
+    void test_unavailable_readings_dont_unlock()
+    {
+        // Phone far away, every other read fails with "not available" (127). Counted as
+        // readings they would pull the average above the trigger and unlock the car.
+        const float trigger = -60.0f;
+        const float release = ock::calculateReleaseRssi(trigger);
+        ock::RssiFilter filter;
+        for (size_t i = 0; i < 2 * ock::RssiFilter::SAMPLES; i++)
+        {
+            filter.add(i % 2 == 0 ? 127 : -95);
+            TEST_ASSERT_NOT_EQUAL(ock::ProximityAction::Unlock,
+                                  ock::evaluateProximity(true, trigger, release, filter, true));
+        }
+        TEST_ASSERT_TRUE(filter.full());
+        TEST_ASSERT_EQUAL_FLOAT(-95.0f, filter.average());
+    }
+
     void test_stale_close_readings_dont_unlock_after_reconnect()
     {
         // Phone was right next to the car, then the connection dropped. Later it reconnects
@@ -178,6 +223,9 @@ void runProximityTests()
     RUN_TEST(test_filter_needs_all_samples);
     RUN_TEST(test_filter_averages_last_samples);
     RUN_TEST(test_filter_reset_forgets_everything);
+    RUN_TEST(test_rssi_reading_range);
+    RUN_TEST(test_filter_ignores_impossible_readings);
+    RUN_TEST(test_unavailable_readings_dont_unlock);
     RUN_TEST(test_stale_close_readings_dont_unlock_after_reconnect);
     RUN_TEST(test_no_action_until_filter_full);
     RUN_TEST(test_no_action_when_disabled);
